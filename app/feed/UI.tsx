@@ -1312,17 +1312,6 @@ if (loading) {
         {trendingKeywords.length === 0 ? (
           <p className="text-xs text-muted-foreground">No trending topics yet. Add keywords to your posts to seed trends.</p>
         ) : (
-          // <div className="space-y-1">
-          //   {trendingKeywords.map((t, i) => (
-          //     <div key={t.tag} className="flex items-center gap-3 px-2.5 py-2 rounded-xl hover:bg-muted transition-colors">
-          //       <span className="text-xs font-bold text-muted-foreground w-4 flex-shrink-0">{i + 1}</span>
-          //       <div className="flex-1 min-w-0">
-          //         <p className="text-sm font-semibold text-foreground truncate">{t.tag}</p>
-          //         <p className="text-[11px] text-muted-foreground">{t.count} post{t.count > 1 ? "s" : ""}</p>
-          //       </div>
-          //     </div>
-          //   ))}
-          // </div>
            <div className="space-y-1">
             {trendingKeywords.map((t, i) => (
               <a

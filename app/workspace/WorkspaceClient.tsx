@@ -624,7 +624,6 @@ const ensureWorkspaceGroupConversation = async (
         `Workspace created, but owner member row failed: ${memberError.message}`,
       );
     }
-    // ✅ ADD THIS PART HERE
     // If the new workspace is shared, automatically create workspace group chat.
     if (workspaceType === "shared") {
       await ensureWorkspaceGroupConversation(
