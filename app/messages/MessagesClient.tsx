@@ -98,14 +98,15 @@ export default function MessagesClient() {
   const selectedConversationIdRef = useRef("");
   const activeDivisionRef = useRef<ConversationDivision>("direct");
 
-  // FIX 5: ref to guard against concurrent loadConversations calls racing each other
+  // Guards against concurrent loadConversations calls: a slower earlier call must not
+  // overwrite fresher data from a newer one.
   const loadConversationsInFlightRef = useRef(false);
   // When a lock error occurs mid-load, schedule one retry rather than dropping silently
   const loadConversationsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Debounce ref so rapid real-time events collapse into a single reload
   const loadConversationsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // FIX 2: ref to prevent setState calls after component unmount
+  // Prevents setState after unmount, which otherwise leaves a blank page on fast navigation.
   const isMountedRef = useRef(true);
   useEffect(() => {
     isMountedRef.current = true;
@@ -142,10 +143,9 @@ export default function MessagesClient() {
     [conversations, activeDivision],
   );
 
-  // FIX 1: When the user switches division tabs, auto-select the first
-  // conversation in that division so the chat panel updates immediately.
-  // Without this, selectedConversationId still points to the old division's
-  // conversation, and the chat panel keeps showing it.
+  // Switching division tabs must also move the selection. Without this,
+  // selectedConversationId still points at the previous division's conversation
+  // and the chat panel keeps showing it.
   const handleSetActiveDivision = useCallback(
     (division: ConversationDivision) => {
       activeDivisionRef.current = division;
@@ -265,8 +265,10 @@ export default function MessagesClient() {
     async (currentUserId: string, keepSelected = true) => {
       if (!currentUserId) return;
 
-      // FIX 5: Skip if another load is already in flight to prevent race conditions
-      // where a slower earlier call overwrites fresher data from a newer call.
+      // Skip if a load is already in flight, so a slower earlier call cannot
+      // overwrite fresher data from a newer one.
+      // NOTE: this drops the newer request rather than queueing it, so a realtime
+      // event arriving mid-load is lost and the list can go stale.
       if (loadConversationsInFlightRef.current) return;
       loadConversationsInFlightRef.current = true;
 
@@ -313,9 +315,11 @@ export default function MessagesClient() {
           return;
         }
 
-        // FIX 4: Remove the hard limit so conversations from all divisions
-        // are fetched. Without this, a user with many Direct conversations
-        // could have all their Collaboration conversations silently cut off.
+        // Fetch conversations from every division here, unpaginated, so that one
+        // busy division cannot crowd out another.
+        // NOTE: CONVERSATION_LIST_LIMIT still slices this to 10 per division in
+        // filteredConversations below, so conversation 11 remains unreachable.
+        // Pending fix: cursor pagination (audit RG-17).
         const { data: conversationRows, error: conversationError } =
           await supabase
             .from("conversations")
@@ -536,9 +540,8 @@ export default function MessagesClient() {
             (conversation) => conversation.id === currentSelectedId,
           );
 
-        // FIX 1 (part 2): When keepSelected is true and the currently selected
-        // conversation still exists in the refreshed list, do NOT overwrite it.
-        // This prevents real-time refresh from resetting the user's selection.
+        // When keepSelected is true and the current selection still exists, leave it
+        // alone — otherwise a realtime refresh would yank the user out of their thread.
         if (keepSelected && currentSelectedStillExists) {
           return;
         }
@@ -556,7 +559,7 @@ export default function MessagesClient() {
         selectedConversationIdRef.current = nextId;
         setSelectedConversationId(nextId);
       } finally {
-        // FIX 5: Always release the in-flight lock
+        // Always release the in-flight guard, including on the early returns above.
         loadConversationsInFlightRef.current = false;
       }
     },
@@ -602,10 +605,9 @@ export default function MessagesClient() {
     [markConversationRead],
   );
 
-  // FIX 2 & 6: Wrap the initial load in try/finally so setLoading(false) is
-  // always called, even if auth check redirects or an error is thrown.
-  // Also guard all setState calls with isMountedRef to prevent updating an
-  // unmounted component (which causes the white blank page on fast navigation).
+  // try/finally so setLoading(false) always runs, even when the auth check
+  // redirects or throws. Every setState is guarded by isMountedRef for the same
+  // reason: an update after unmount leaves the page blank.
   useEffect(() => {
   const load = async () => {
   try {
