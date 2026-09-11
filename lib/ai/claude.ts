@@ -33,8 +33,10 @@ export async function generateStructured<T>({
   tool,
   maxTokens = 1400,
   timeoutMs = 30000,
+  model,
 }: GenerateArgs): Promise<T> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
+  const modelId = model || MODEL;
 
   if (!apiKey) {
     throw new AiError("ANTHROPIC_API_KEY is not set on the server", 500);

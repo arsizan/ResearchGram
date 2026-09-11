@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import type { AssistantAnswer, AssistantTurn } from "@/lib/ai/types";
 import AssistantAnswerBlock from "./AssistantAnswerBlock";
-import { Sparkles, X, ArrowUp, AlertCircle, Loader2 } from "lucide-react";
+import { Sparkles, X, ArrowUp, AlertCircle, Loader2, RotateCcw} from "lucide-react";
 
 const SUGGESTIONS = [
   "What are the main approaches to federated learning in healthcare?",
@@ -12,7 +12,65 @@ const SUGGESTIONS = [
   "Recent work on low-cost IoT air quality monitoring",
   "What datasets exist for Bangla sentiment analysis?",
 ];
+/**
+ * Where the panel keeps its conversation between full page loads.
+ *
+ * sessionStorage, not localStorage: a research thread belongs to the sitting the
+ * user is in, and should not still be there tomorrow morning.
+ *
+ * Navigation is handled by mounting this component in the root layout, which
+ * survives route changes — this is only for a refresh or a restored tab. Only
+ * the turns are stored, never whether the panel was open: the server renders
+ * this component too and has no sessionStorage, so a panel that opened itself on
+ * the client would not match the server's HTML.
+ *
+ * The version suffix means a future change to AssistantAnswer can bump the key
+ * instead of migrating whatever is already in people's browsers.
+ */
+const STORAGE_KEY = "researchgram.assistant.v1";
+const MAX_STORED_TURNS = 15;
 
+function readStoredTurns(): AssistantTurn[] {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY);
+    if (!raw) return [];
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter(
+        (turn): turn is AssistantTurn =>
+          Boolean(turn) &&
+          typeof turn === "object" &&
+          typeof (turn as AssistantTurn).id === "string" &&
+          typeof (turn as AssistantTurn).question === "string" &&
+          // A turn saved mid-flight would spin forever: the request it was
+          // waiting on died with the old page.
+          (turn as AssistantTurn).status !== "pending",
+      )
+      .slice(-MAX_STORED_TURNS);
+  } catch {
+    // Private mode, storage disabled, or something else wrote to this key. An
+    // empty panel is a fine outcome; an exception is not.
+    return [];
+  }
+}
+
+function writeStoredTurns(turns: AssistantTurn[]) {
+  try {
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        turns.filter((turn) => turn.status !== "pending").slice(-MAX_STORED_TURNS),
+      ),
+    );
+  } catch {
+    // Quota, or storage is off. Losing the history is not worth breaking the UI.
+  }
+}
 /**
  * The floating research assistant.
  *
@@ -24,8 +82,10 @@ const SUGGESTIONS = [
 export default function ResearchAssistant() {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
-  const [turns, setTurns] = useState<AssistantTurn[]>([]);
+  const [turns, setTurns] = useState<AssistantTurn[]>(readStoredTurns);
   const [busy, setBusy] = useState(false);
+  // null until the session has been checked, so nothing flashes on auth pages.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -37,6 +97,30 @@ export default function ResearchAssistant() {
       isMountedRef.current = false;
     };
   }, []);
+    // Mounted in the root layout, so this runs on every page including the auth
+  // ones. The panel only exists for a signed-in member.
+  useEffect(() => {
+    let active = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (active) setSignedIn(Boolean(data.session));
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      (_event, session) => {
+        if (active) setSignedIn(Boolean(session));
+      },
+    );
+
+    return () => {
+      active = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    writeStoredTurns(turns);
+  }, [turns]);
 
   // Escape closes the panel, as it does everywhere else on the web.
   useEffect(() => {
@@ -126,6 +210,7 @@ export default function ResearchAssistant() {
     },
     [busy],
   );
+  if (!signedIn) return null;
 
   if (!open) {
     return (
@@ -148,21 +233,28 @@ export default function ResearchAssistant() {
       className="fixed inset-x-0 bottom-0 z-[90] flex h-[85vh] flex-col rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-[min(640px,80vh)] sm:w-[420px] sm:rounded-2xl"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <span className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
-          <span className="text-sm font-semibold text-foreground">
-            Research assistant
-          </span>
-        </span>
+                <span className="flex items-center gap-1">
+          {turns.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setTurns([])}
+              aria-label="Start a new conversation"
+              title="Start a new conversation"
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            </button>
+          )}
 
-        <button
-          type="button"
-          onClick={() => setOpen(false)}
-          aria-label="Close the research assistant"
-          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </button>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close the research assistant"
+            className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </span>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">

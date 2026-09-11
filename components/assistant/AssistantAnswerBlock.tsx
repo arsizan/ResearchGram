@@ -75,11 +75,23 @@ export default function AssistantAnswerBlock({
     <div className="flex flex-col gap-5">
       {/* ── The written answer ─────────────────────────────────────────── */}
       <div>
-        <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
-          {answer.kind === "product_help" ? "About ResearchGram" : "Answer"}
-        </p>
-        <p className="mt-2 text-[14.5px] leading-6 text-foreground">
+            {/* Small talk gets no label — a heading over "You're welcome!" reads
+            like a form, not a reply. */}
+        {answer.kind !== "chit_chat" && (
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
+            {answer.kind === "product_help"
+              ? "About ResearchGram"
+              : answer.kind === "unclear"
+                ? "Needs a bit more"
+                : "Answer"}
+          </p>
+        )}
+        <p
+          className={`text-[14.5px] leading-6 text-foreground ${
+            answer.kind === "chit_chat" ? "" : "mt-2"
+          }`}
+        >
           {renderAnswerText(answer.answer)}
         </p>
       </div>

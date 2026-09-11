@@ -29,4 +29,9 @@ export type GenerateArgs = {
   tool: ToolSpec;
   maxTokens?: number;
   timeoutMs?: number;
+    /**
+   * Override the provider's default model for this one call. Used by the cheap
+   * routing step, which does not need the model that writes the answers.
+   */
+  model?: string;
 };

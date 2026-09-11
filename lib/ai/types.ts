@@ -24,7 +24,11 @@ export type MemberMatch = {
 };
 
 /** What kind of question the user asked, so the UI can render the right block. */
-export type AnswerKind = "research" | "product_help" | "unclear";
+export type AnswerKind =
+  | "research"
+  | "product_help"
+  | "chit_chat"
+  | "unclear";
 
 export type AssistantAnswer = {
   kind: AnswerKind;

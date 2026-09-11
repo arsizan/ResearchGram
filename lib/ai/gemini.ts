@@ -107,8 +107,10 @@ export async function generateStructured<T>({
   tool,
   maxTokens = 4096,
   timeoutMs = 40000,
+  model,
 }: GenerateArgs): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY;
+  const modelId = model || MODEL;
 
   if (!apiKey) {
     throw new AiError("GEMINI_API_KEY is not set on the server", 500);
@@ -136,7 +138,7 @@ export async function generateStructured<T>({
 
   try {
     const response = await fetch(
-      `${BASE_URL}/models/${encodeURIComponent(MODEL)}:generateContent`,
+      `${BASE_URL}/models/${encodeURIComponent(modelId)}:generateContent`,
       {
         method: "POST",
         signal: controller.signal,

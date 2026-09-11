@@ -13,6 +13,7 @@
 import { searchPapers } from "@/lib/scholar";
 import { findMembersForTopic } from "@/lib/scholar/members";
 import { writeResearchAnswer } from "@/lib/ai/researchAnswer";
+import { classifyQuestion } from "@/lib/ai/intent";
 import { AiError } from "@/lib/ai/provider";
 import {
   checkRateLimit,
@@ -73,7 +74,40 @@ export async function POST(request: Request) {
 
   try {
     // 1. Retrieve first. The model never speaks without evidence in hand.
-    const search = await searchPapers(question, { perPage: 40 });
+       // 1. Work out what was actually asked. A greeting or a "how do I post a
+    //    paper?" is answered here and never touches OpenAlex.
+    const routed = await classifyQuestion(question);
+    if (routed.degraded) notes.push("routing unavailable — searched anyway");
+
+    if (routed.intent !== "research") {
+      const kind: AssistantAnswer["kind"] =
+        routed.intent === "product_help"
+          ? "product_help"
+          : routed.intent === "chit_chat"
+            ? "chit_chat"
+            : "unclear";
+
+      return json(
+        {
+          kind,
+          answer: routed.reply,
+          papers: [],
+          members: [],
+          relatedQueries: routed.relatedQueries,
+          totalFound: 0,
+          searchedFor: routed.searchQuery,
+          diagnostics: {
+            tookMs: Date.now() - startedAt,
+            notes: [...notes, `intent: ${routed.intent}`],
+          },
+        } satisfies AssistantAnswer,
+        200,
+        { "X-RateLimit-Remaining": String(limit.remaining) },
+      );
+    }
+
+    // 2. Retrieve. The model never speaks without evidence in hand.
+    const search = await searchPapers(routed.searchQuery, { perPage: 40 });
     notes.push(...search.diagnostics.notes);
 
     // 2. Write the answer, and match members, at the same time. Neither needs
@@ -90,7 +124,7 @@ export async function POST(request: Request) {
       writeResearchAnswer(question, search.papers),
       findMembersForTopic({
         supabase,
-        query: question,
+        query: routed.searchQuery,
         excludeUserId: user.id,
         viewerDepartment: (viewer as { department?: string | null } | null)?.department ?? null,
       }),

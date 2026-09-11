@@ -455,7 +455,6 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import NotificationBell from "@/components/NotificationBell";
-import ResearchAssistant from "@/components/assistant/ResearchAssistant";
 import {
   Search,
   Home,
@@ -896,9 +895,6 @@ useEffect(() => {
           ))}
         </div>
       </nav>
-
-      {/* Signed-in pages only: AppNav is not rendered on the landing or auth pages. */}
-      <ResearchAssistant />
     </>
   );
 }
