@@ -26,6 +26,7 @@ function withMailto(url: URL): URL {
 }
 
 async function getJson(url: URL, timeoutMs = 12000): Promise<unknown> {
+  
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -42,14 +43,70 @@ async function getJson(url: URL, timeoutMs = 12000): Promise<unknown> {
       next: { revalidate: 60 * 60 * 24 },
     });
 
-    if (!response.ok) {
-      throw new Error(`OpenAlex ${response.status} for ${url.pathname}`);
+       if (!response.ok) {
+      throw new OpenAlexError(
+        `OpenAlex ${response.status} for ${url.pathname}`,
+        response.status,
+      );
     }
-
     return await response.json();
   } finally {
     clearTimeout(timer);
   }
+}
+export class OpenAlexError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "OpenAlexError";
+    this.status = status;
+  }
+}
+
+/**
+ * OpenAlex's `search` is a relevance query, not a question box.
+ *
+ * Sending it a whole English sentence is wrong twice over. It returns HTTP 400
+ * on some punctuation, and where it does succeed the filler words ("what are the
+ * main approaches to") only dilute the relevance score against the words that
+ * actually carry the topic. So a question is reduced to its content words before
+ * it is sent. The original question still goes to the model, which is the part
+ * that has to answer it.
+ */
+const SEARCH_STOPWORDS = new Set([
+  "a", "about", "all", "also", "am", "an", "and", "any", "are", "as", "at",
+  "be", "been", "being", "between", "both", "but", "by", "can", "could", "did",
+  "do", "does", "doing", "done", "each", "for", "from", "get", "give", "had",
+  "has", "have", "her", "his", "how", "i", "if", "in", "into", "is", "it",
+  "its", "just", "let", "like", "main", "many", "may", "me", "might", "more",
+  "most", "much", "must", "my", "need", "of", "on", "or", "other", "our",
+  "out", "over", "please", "recent", "should", "show", "so", "some", "such",
+  "tell", "than", "that", "the", "their", "them", "then", "there", "these",
+  "they", "this", "those", "to", "up", "us", "use", "used", "using", "very",
+  "want", "was", "we", "were", "what", "when", "where", "which", "while",
+  "who", "why", "will", "with", "work", "would", "you", "your",
+]);
+
+export function toOpenAlexQuery(raw: string): string {
+  // Strip every character OpenAlex might choke on, including the question mark
+  // that ends most of the questions people actually type.
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+
+  const kept = cleaned
+    .split(" ")
+    .filter((word) => word.length > 1 && !SEARCH_STOPWORDS.has(word))
+    .slice(0, 12);
+
+  // A query made entirely of stopwords ("how do you do") is still better sent
+  // than dropped — the caller decides what an empty result means.
+  return kept.length > 0 ? kept.join(" ") : cleaned;
 }
 
 /**
@@ -200,23 +257,48 @@ export async function searchWorks(
 ): Promise<{ papers: Paper[]; totalFound: number }> {
   const { perPage = 40, fromYear, openAccessOnly } = options;
 
-  const url = new URL(`${BASE}/works`);
-  url.searchParams.set("search", query);
-  url.searchParams.set("per-page", String(Math.min(perPage, 200)));
-  url.searchParams.set("sort", "relevance_score:desc");
+  const primary = toOpenAlexQuery(query);
+  if (!primary) return { papers: [], totalFound: 0 };
 
-  const filters: string[] = ["has_abstract:true"];
-  if (fromYear) filters.push(`from_publication_date:${fromYear}-01-01`);
-  if (openAccessOnly) filters.push("is_oa:true");
-  url.searchParams.set("filter", filters.join(","));
+  // If the full keyword set is still rejected, the first few words carry most of
+  // the topic. One narrower retry, then give up — this must not become a loop.
+  const attempts = [primary];
+  const narrowed = primary.split(" ").slice(0, 5).join(" ");
+  if (narrowed !== primary) attempts.push(narrowed);
 
-  const raw = (await getJson(url)) as OpenAlexList<OpenAlexWork>;
-  const results = Array.isArray(raw?.results) ? raw.results : [];
+  let lastError: unknown;
 
-  return {
-    papers: results.map(normaliseWork).filter((paper) => paper.id !== ""),
-    totalFound: typeof raw?.meta?.count === "number" ? raw.meta.count : 0,
-  };
+  for (const term of attempts) {
+    const url = new URL(`${BASE}/works`);
+    url.searchParams.set("search", term);
+    url.searchParams.set("per-page", String(Math.min(perPage, 200)));
+    url.searchParams.set("sort", "relevance_score:desc");
+
+    const filters: string[] = ["has_abstract:true"];
+    if (fromYear) filters.push(`from_publication_date:${fromYear}-01-01`);
+    if (openAccessOnly) filters.push("is_oa:true");
+    url.searchParams.set("filter", filters.join(","));
+
+    try {
+      const raw = (await getJson(url)) as OpenAlexList<OpenAlexWork>;
+      const results = Array.isArray(raw?.results) ? raw.results : [];
+
+      return {
+        papers: results.map(normaliseWork).filter((paper) => paper.id !== ""),
+        totalFound: typeof raw?.meta?.count === "number" ? raw.meta.count : 0,
+      };
+    } catch (error) {
+      lastError = error;
+
+      // Only a rejected query is worth retrying. A timeout or an outage will
+      // fail the same way twice and the user waits twice as long for it.
+      if (!(error instanceof OpenAlexError) || error.status !== 400) throw error;
+
+      console.warn(`OPENALEX 400 for search="${term}" — retrying narrower`);
+    }
+  }
+
+  throw lastError;
 }
 
 /**
