@@ -59,6 +59,33 @@ function scorePapers(papers: Paper[]): Paper[] {
     .map((entry) => entry.paper);
 }
 
+/** How long the optional enrichment step may take, in total. */
+const ENRICHMENT_CEILING_MS = 10000;
+
+/**
+ * Resolve with `fallback` if `work` has not finished in time.
+ *
+ * The work is not cancelled — there is nothing useful to cancel it with here,
+ * and it will settle harmlessly on its own. What matters is that the caller
+ * stops waiting.
+ */
+function withCeiling<T>(work: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms);
+
+    work.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
 export async function searchPapers(
   query: string,
   options: SearchOptions = {},
@@ -109,10 +136,22 @@ export async function searchPapers(
     .map((paper) => paper.journal?.openalexSourceId)
     .filter((id): id is string => Boolean(id));
 
-  const [metricsResult, s2Result] = await Promise.allSettled([
-    fetchJournalMetrics(sourceIds),
-    enrichWithSemanticScholar(found),
-  ]);
+  // Enrichment is optional by design, so it gets a hard ceiling as a whole
+  // rather than trusting each adapter to police itself. Two upstream services
+  // with their own retries sit behind this; without the ceiling a slow one can
+  // spend the serverless function's entire remaining budget on a summary the
+  // user did not ask for, and the platform kills the request mid-answer.
+  const [metricsResult, s2Result] = await withCeiling(
+    Promise.allSettled([
+      fetchJournalMetrics(sourceIds),
+      enrichWithSemanticScholar(found),
+    ]),
+    ENRICHMENT_CEILING_MS,
+    [
+      { status: "rejected", reason: new Error("enrichment timed out") },
+      { status: "rejected", reason: new Error("enrichment timed out") },
+    ],
+  );
 
   let papers = found;
   let journalMetricsOk = true;

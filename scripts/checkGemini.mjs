@@ -5,7 +5,7 @@
  *
  * Three things, in order, because each one only makes sense if the last passed:
  *   1. the key is loaded and Google accepts it
- *   2. the model in GEMINI_MODEL exists and your key may call it
+ *   2. every model in the GEMINI_MODEL chain exists and your key may call it
  *   3. a real structured-output call returns parseable JSON matching a schema
  *
  * Step 2 lists what your key can actually use. Model names change often enough
@@ -13,7 +13,10 @@
  */
 
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
-const MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
+const CHAIN = (process.env.GEMINI_MODEL || "gemini-3.5-flash-lite")
+  .split(",")
+  .map((name) => name.trim())
+  .filter(Boolean);
 const KEY = process.env.GEMINI_API_KEY;
 
 let failures = 0;
@@ -65,18 +68,27 @@ try {
   info("text models you can use:");
   for (const name of shortlist.slice(0, 15)) info(`  - ${name}`);
 
-  if (modelNames.includes(MODEL)) {
-    ok(`GEMINI_MODEL "${MODEL}" is in the list`);
-  } else {
-    bad(`GEMINI_MODEL "${MODEL}" is NOT available to this key`);
-    info(`set GEMINI_MODEL in .env.local to one of the names above`);
+  for (const name of CHAIN) {
+    if (modelNames.includes(name)) {
+      ok(`chain model "${name}" is callable`);
+    } else {
+      bad(`chain model "${name}" is NOT available to this key`);
+      info("fix GEMINI_MODEL in .env.local — every name in the list must exist");
+    }
   }
+
+  info("");
+  info("Daily limits are per model and differ a lot. Check yours at");
+  info("https://aistudio.google.com/rate-limit with 'All models' switched on;");
+  info("put the biggest RPD first in GEMINI_MODEL.");
 } catch (error) {
   bad(`could not list models: ${error.message}`);
 }
 
 // ------------------------------------------- 3. a real structured-output call
 console.log("\n3. Structured output (what the assistant actually does)");
+for (const MODEL of CHAIN) {
+  console.log(`   -- ${MODEL}`);
 try {
   const res = await fetch(
     `${BASE_URL}/models/${encodeURIComponent(MODEL)}:generateContent`,
@@ -120,11 +132,12 @@ try {
     const detail = await res.text();
     bad(`HTTP ${res.status}`);
     info(detail.slice(0, 300));
-    if (res.status === 429) {
-      info("free-tier quota hit — wait a minute and run this again");
-    }
     if (res.status === 404) {
       info(`the model "${MODEL}" does not exist — pick one from section 2`);
+    }
+    if (res.status === 429) {
+      info("this model's free allowance is used up for now. Not fatal: the app");
+      info("skips it and moves to the next model in GEMINI_MODEL by itself.");
     }
   } else {
     const body = await res.json();
@@ -155,6 +168,7 @@ try {
   }
 } catch (error) {
   bad(`structured call failed: ${error.message}`);
+}
 }
 
 console.log(

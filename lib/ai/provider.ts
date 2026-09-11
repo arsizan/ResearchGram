@@ -9,12 +9,22 @@
  * billing account. Set AI_PROVIDER=anthropic to use Claude instead.
  */
 
-import { AiError, type GenerateArgs } from "./errors";
-import { generateStructured as gemini } from "./gemini";
-import { generateStructured as anthropic } from "./claude";
+import {
+  AiError,
+  type GenerateArgs,
+  type GenerateStreamArgs,
+} from "./errors";
+import {
+  generateStructured as gemini,
+  generateStructuredStream as geminiStream,
+} from "./gemini";
+import {
+  generateStructured as anthropic,
+  generateStructuredStream as anthropicStream,
+} from "./claude";
 
 export { AiError };
-export type { GenerateArgs, ToolSpec } from "./errors";
+export type { GenerateArgs, GenerateStreamArgs, ToolSpec } from "./errors";
 
 const PROVIDER = (process.env.AI_PROVIDER || "gemini").toLowerCase();
 
@@ -33,5 +43,20 @@ export function generateStructured<T>(args: GenerateArgs): Promise<T> {
       return Promise.reject(
         new AiError(`Unknown AI_PROVIDER: ${PROVIDER}`, 500),
       );
+  }
+}
+
+/** Same dispatch, for the call whose output the user watches arrive. */
+export function generateStructuredStream<T>(
+  args: GenerateStreamArgs,
+): Promise<T> {
+  switch (PROVIDER) {
+    case "gemini":
+      return geminiStream<T>(args);
+    case "anthropic":
+    case "claude":
+      return anthropicStream<T>(args);
+    default:
+      return Promise.reject(new AiError(`Unknown AI_PROVIDER: ${PROVIDER}`, 500));
   }
 }

@@ -12,7 +12,11 @@
  * would only hide it.
  */
 
-import { AiError, type GenerateArgs } from "./errors";
+import {
+  AiError,
+  type GenerateArgs,
+  type GenerateStreamArgs,
+} from "./errors";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 const API_VERSION = "2023-06-01";
@@ -36,7 +40,6 @@ export async function generateStructured<T>({
   model,
 }: GenerateArgs): Promise<T> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  const modelId = model || MODEL;
 
   if (!apiKey) {
     throw new AiError("ANTHROPIC_API_KEY is not set on the server", 500);
@@ -55,7 +58,7 @@ export async function generateStructured<T>({
         "anthropic-version": API_VERSION,
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: model || MODEL,
         max_tokens: maxTokens,
         system,
         tools: [tool],
@@ -93,4 +96,26 @@ export async function generateStructured<T>({
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Streaming shim.
+ *
+ * The Messages API does support streaming, but this provider is the fallback for
+ * when there is Anthropic credit, not the one in use — so rather than carry a
+ * second untested SSE parser, this satisfies the interface by reporting the
+ * finished text once. The UI shows it arriving in one piece instead of word by
+ * word; nothing breaks.
+ */
+export async function generateStructuredStream<T>({
+  partialField,
+  onPartial,
+  ...args
+}: GenerateStreamArgs): Promise<T> {
+  const result = await generateStructured<T>(args);
+
+  const value = (result as Record<string, unknown>)[partialField];
+  if (typeof value === "string") onPartial(value);
+
+  return result;
 }

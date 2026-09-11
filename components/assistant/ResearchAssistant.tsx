@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
-import type { AssistantAnswer, AssistantTurn } from "@/lib/ai/types";
+import type {
+  AssistantAnswer,
+  AssistantEvent,
+  AssistantTurn,
+} from "@/lib/ai/types";
 import AssistantAnswerBlock from "./AssistantAnswerBlock";
-import { Sparkles, X, ArrowUp, AlertCircle, Loader2, RotateCcw} from "lucide-react";
+import { Sparkles, X, ArrowUp, AlertCircle, Loader2, RotateCcw } from "lucide-react";
 
 const SUGGESTIONS = [
   "What are the main approaches to federated learning in healthcare?",
@@ -12,6 +16,7 @@ const SUGGESTIONS = [
   "Recent work on low-cost IoT air quality monitoring",
   "What datasets exist for Bangla sentiment analysis?",
 ];
+
 /**
  * Where the panel keeps its conversation between full page loads.
  *
@@ -71,6 +76,7 @@ function writeStoredTurns(turns: AssistantTurn[]) {
     // Quota, or storage is off. Losing the history is not worth breaking the UI.
   }
 }
+
 /**
  * The floating research assistant.
  *
@@ -97,7 +103,8 @@ export default function ResearchAssistant() {
       isMountedRef.current = false;
     };
   }, []);
-    // Mounted in the root layout, so this runs on every page including the auth
+
+  // Mounted in the root layout, so this runs on every page including the auth
   // ones. The panel only exists for a signed-in member.
   useEffect(() => {
     let active = true;
@@ -119,6 +126,9 @@ export default function ResearchAssistant() {
   }, []);
 
   useEffect(() => {
+    // Nothing half-written goes to storage, and a streaming answer does not
+    // serialise the whole history on every token.
+    if (turns.some((turn) => turn.status === "pending")) return;
     writeStoredTurns(turns);
   }, [turns]);
 
@@ -138,13 +148,24 @@ export default function ResearchAssistant() {
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // Keep the newest turn in view as answers arrive.
+  // Keep the newest turn in view as the answer writes itself in. Keyed on what
+  // actually changes the height rather than on `turns`, and deliberately not
+  // smooth: a smooth scroll restarting on every token never arrives.
+  const newest = turns[turns.length - 1];
+  const scrollKey = [
+    turns.length,
+    newest?.status,
+    newest?.stage ?? "",
+    newest?.answer?.answer.length ?? 0,
+    newest?.answer?.papers.length ?? 0,
+    newest?.answer?.members.length ?? 0,
+  ].join(":");
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({
-      top: scrollRef.current.scrollHeight,
-      behavior: "smooth",
-    });
-  }, [turns]);
+    const node = scrollRef.current;
+    if (!node) return;
+    node.scrollTo({ top: node.scrollHeight });
+  }, [scrollKey]);
 
   const ask = useCallback(
     async (rawQuestion: string) => {
@@ -188,17 +209,113 @@ export default function ResearchAssistant() {
           body: JSON.stringify({ question: trimmed }),
         });
 
-        const payload = await response.json();
-
+        // Rejections before any work starts are still plain JSON.
         if (!response.ok) {
+          const payload = await response.json().catch(() => null);
           settle({
             status: "error",
-            errorMessage: payload?.error || "That did not work. Please try again.",
+            errorMessage:
+              payload?.error || "That did not work. Please try again.",
           });
           return;
         }
 
-        settle({ status: "done", answer: payload as AssistantAnswer });
+        if (!response.body) {
+          settle({
+            status: "error",
+            errorMessage: "That did not work. Please try again.",
+          });
+          return;
+        }
+
+        // The answer is assembled from the stream. `draft` is what has arrived
+        // so far; every event replaces it and re-renders the same block, so the
+        // papers show up long before the text that cites them.
+        let draft: AssistantAnswer | null = null;
+        let settled = false;
+
+        const handle = (event: AssistantEvent) => {
+          switch (event.type) {
+            case "status":
+              settle({ stage: event.stage });
+              return;
+
+            case "papers":
+              draft = {
+                kind: "research",
+                answer: "",
+                papers: event.papers,
+                // Search results, not citations — the block says so until the
+                // answer lands and names the ones it actually used.
+                papersPending: true,
+                members: [],
+                relatedQueries: [],
+                totalFound: event.totalFound,
+                searchedFor: event.searchedFor,
+                diagnostics: { tookMs: 0, notes: [] },
+              };
+              settle({ answer: draft });
+              return;
+
+            case "members":
+              if (!draft) return;
+              draft = { ...draft, members: event.members };
+              settle({ answer: draft });
+              return;
+
+            case "answer_progress":
+              if (!draft) return;
+              // Cumulative, so this is an assignment and not a concatenation.
+              draft = { ...draft, answer: event.text };
+              settle({ answer: draft });
+              return;
+
+            case "done":
+              settled = true;
+              settle({ status: "done", answer: event.answer, stage: undefined });
+              return;
+
+            case "error":
+              settled = true;
+              settle({ status: "error", errorMessage: event.message });
+              return;
+          }
+        };
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          let newline = buffer.indexOf("\n");
+          while (newline !== -1) {
+            const line = buffer.slice(0, newline).trim();
+            buffer = buffer.slice(newline + 1);
+            newline = buffer.indexOf("\n");
+
+            if (!line) continue;
+
+            try {
+              handle(JSON.parse(line) as AssistantEvent);
+            } catch {
+              // A line we cannot read is not a reason to lose the rest.
+            }
+          }
+        }
+
+        // The stream ended without saying how it ended — a dropped connection,
+        // or the platform cutting the function off mid-answer.
+        if (!settled) {
+          settle({
+            status: "error",
+            errorMessage: "The answer stopped partway. Please try again.",
+          });
+        }
       } catch {
         settle({
           status: "error",
@@ -210,6 +327,7 @@ export default function ResearchAssistant() {
     },
     [busy],
   );
+
   if (!signedIn) return null;
 
   if (!open) {
@@ -233,7 +351,14 @@ export default function ResearchAssistant() {
       className="fixed inset-x-0 bottom-0 z-[90] flex h-[85vh] flex-col rounded-t-2xl border border-border bg-background shadow-2xl sm:inset-x-auto sm:bottom-6 sm:right-6 sm:h-[min(640px,80vh)] sm:w-[420px] sm:rounded-2xl"
     >
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-                <span className="flex items-center gap-1">
+        <span className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-primary" aria-hidden="true" />
+          <span className="text-sm font-semibold text-foreground">
+            Research assistant
+          </span>
+        </span>
+
+        <span className="flex items-center gap-1">
           {turns.length > 0 && (
             <button
               type="button"
@@ -294,13 +419,28 @@ export default function ResearchAssistant() {
                 </p>
 
                 {turn.status === "pending" && (
-                  <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                  <p
+                    className="flex items-center gap-2 text-[13px] text-muted-foreground"
+                    aria-live="polite"
+                  >
                     <Loader2
                       className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none"
                       aria-hidden="true"
                     />
-                    Reading the literature…
+                    {turn.stage === "searching"
+                      ? "Searching the literature…"
+                      : turn.stage === "writing"
+                        ? "Writing the answer…"
+                        : "Reading your question…"}
                   </p>
+                )}
+
+                {/* Rendered while pending, and kept when something later
+                    fails. The papers and any text that arrived are still good;
+                    throwing them away to show a red box was the worst of both.
+                    The error goes underneath instead. */}
+                {turn.answer && (
+                  <AssistantAnswerBlock answer={turn.answer} onFollowUp={ask} />
                 )}
 
                 {turn.status === "error" && (
@@ -309,12 +449,10 @@ export default function ResearchAssistant() {
                       className="mt-0.5 h-3.5 w-3.5 shrink-0"
                       aria-hidden="true"
                     />
-                    {turn.errorMessage}
+                    {turn.answer
+                      ? "That answer stopped partway. What is above is what arrived."
+                      : turn.errorMessage}
                   </p>
-                )}
-
-                {turn.status === "done" && turn.answer && (
-                  <AssistantAnswerBlock answer={turn.answer} onFollowUp={ask} />
                 )}
               </div>
             ))}

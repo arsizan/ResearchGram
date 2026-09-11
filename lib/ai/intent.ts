@@ -31,6 +31,9 @@ Classify the user's message into exactly one intent:
   method, or the published literature. This is the common case.
 - "product_help" — they are asking how to do something on ResearchGram itself.
 - "chit_chat" — a greeting, thanks, small talk, or a question about you.
+- "general_knowledge" — a factual question that is not about the research
+  literature: history, geography, definitions, who holds an office, how something
+  works. A student asking this in a research tool still deserves an answer.
 - "too_vague" — they clearly want research but gave nothing searchable, such as a
   bare "papers" or "help me with my project".
 
@@ -44,7 +47,14 @@ Then:
   description of ResearchGram above; if you do not know, say so and suggest they
   look on the relevant page. For too_vague, name the one detail that would let you
   search.
-- Never claim to have found papers. You have not searched anything.
+- For "general_knowledge", answer from your own knowledge — but if the answer is
+  something that changes over time (who currently holds an office, the latest
+  figure, a price, a record, what happened recently) say plainly that your
+  information may be out of date and name where to check. Never state a current
+  officeholder, date or number as settled fact. If you are not confident, say you
+  are not sure rather than guessing.
+- Never claim to have found papers. You have not searched anything. Never invent a
+  citation, an author or a study.
 - related_queries: 2 to 4 short topic phrases they might want next. Leave empty
   for chit_chat.`;
 
@@ -57,8 +67,14 @@ const TOOL = {
     properties: {
       intent: {
         type: "string",
-        enum: ["research", "product_help", "chit_chat", "too_vague"],
-        description: "Which of the four kinds of message this is.",
+        enum: [
+          "research",
+          "product_help",
+          "general_knowledge",
+          "chit_chat",
+          "too_vague",
+        ],
+        description: "Which of the five kinds of message this is.",
       },
       search_query: {
         type: "string",
@@ -68,19 +84,25 @@ const TOOL = {
       reply: {
         type: "string",
         description:
-          "The answer, for product_help, chit_chat and too_vague. Empty string for research.",
+          "The answer, for product_help, general_knowledge, chit_chat and too_vague. Empty string for research.",
       },
       related_queries: {
         type: "array",
         items: { type: "string" },
-        description: "2-4 short follow-up topic phrases. Empty for chit_chat.",
+        description:
+          "2-4 short follow-up topic phrases someone could search the literature for. Empty for chit_chat.",
       },
     },
     required: ["intent", "search_query", "reply", "related_queries"],
   },
 } as const;
 
-export type Intent = "research" | "product_help" | "chit_chat" | "too_vague";
+export type Intent =
+  | "research"
+  | "product_help"
+  | "general_knowledge"
+  | "chit_chat"
+  | "too_vague";
 
 export type RoutedQuestion = {
   intent: Intent;
@@ -93,7 +115,13 @@ export type RoutedQuestion = {
   degraded: boolean;
 };
 
-const VALID: Intent[] = ["research", "product_help", "chit_chat", "too_vague"];
+const VALID: Intent[] = [
+  "research",
+  "product_help",
+  "general_knowledge",
+  "chit_chat",
+  "too_vague",
+];
 
 type RawRoute = {
   intent?: unknown;
@@ -102,9 +130,34 @@ type RawRoute = {
   related_queries?: unknown;
 };
 
+/**
+ * Small talk that does not need a model.
+ *
+ * The free tier allows a fixed number of requests a day, and routing spends one
+ * of them on every message. "hi" and "thanks" are the cheapest possible things
+ * to recognise and the least deserving of a paid call, so they never make one.
+ * Anything this does not match exactly still goes to the model — the point is to
+ * stop wasting quota, not to hand-write a classifier.
+ */
+const SMALL_TALK =
+  /^(hi|hey+|hello+|yo|salam|assalamu?\s?alaikum|good\s(morning|afternoon|evening|night)|how\s(are|r)\s(you|u)|thanks?|thank\s(you|u)|ty|tnx|ok|okay|k|bye|goodbye|see\syou|nice|cool|great)[\s!.?]*$/i;
+
+const SMALL_TALK_REPLY =
+  "Hello. Ask me about any research topic and I will find the papers on it, summarise what they say, and show you who on ResearchGram works in that area.";
+
 export async function classifyQuestion(
   question: string,
 ): Promise<RoutedQuestion> {
+  if (SMALL_TALK.test(question.trim())) {
+    return {
+      intent: "chit_chat",
+      searchQuery: "",
+      reply: SMALL_TALK_REPLY,
+      relatedQueries: [],
+      degraded: false,
+    };
+  }
+
   try {
     const raw = await generateStructured<RawRoute>({
       system: SYSTEM,
@@ -117,7 +170,7 @@ export async function classifyQuestion(
       // Routing is a short answer. A small budget keeps it fast and stops a
       // thinking model from spending the whole allowance deliberating.
       maxTokens: 1200,
-      timeoutMs: 15000,
+      timeoutMs: 9000,
       // Optional: a smaller, faster model just for this step. Unset means the
       // same model as everything else, which is the safe default.
       model: process.env.GEMINI_FAST_MODEL || undefined,

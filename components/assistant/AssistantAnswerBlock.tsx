@@ -74,33 +74,40 @@ export default function AssistantAnswerBlock({
   return (
     <div className="flex flex-col gap-5">
       {/* ── The written answer ─────────────────────────────────────────── */}
-      <div>
-            {/* Small talk gets no label — a heading over "You're welcome!" reads
+      {/* Empty while the papers are already on screen and the text has not
+          started. A heading over nothing looks broken; nothing looks like
+          waiting, which is what it is. */}
+      {answer.answer.trim().length > 0 && (
+        <div>
+          {/* Small talk gets no label — a heading over "You're welcome!" reads
             like a form, not a reply. */}
-        {answer.kind !== "chit_chat" && (
-          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
-            {answer.kind === "product_help"
-              ? "About ResearchGram"
-              : answer.kind === "unclear"
-                ? "Needs a bit more"
-                : "Answer"}
+          {answer.kind !== "chit_chat" && (
+            <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
+              {answer.kind === "product_help"
+                ? "About ResearchGram"
+                : answer.kind === "general_knowledge"
+                  ? "General knowledge · not from the papers"
+                  : answer.kind === "unclear"
+                    ? "Needs a bit more"
+                    : "Answer"}
+            </p>
+          )}
+          <p
+            className={`text-[14.5px] leading-6 text-foreground ${
+              answer.kind === "chit_chat" ? "" : "mt-2"
+            }`}
+          >
+            {renderAnswerText(answer.answer)}
           </p>
-        )}
-        <p
-          className={`text-[14.5px] leading-6 text-foreground ${
-            answer.kind === "chit_chat" ? "" : "mt-2"
-          }`}
-        >
-          {renderAnswerText(answer.answer)}
-        </p>
-      </div>
+        </div>
+      )}
 
       {/* ── Papers the answer actually leans on ────────────────────────── */}
       {answer.papers.length > 0 && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Papers cited
+            {answer.papersPending ? "Papers found" : "Papers cited"}
           </p>
 
           <ol className="mt-2 flex flex-col gap-2">
@@ -192,7 +199,10 @@ export default function AssistantAnswerBlock({
                             rel="noreferrer"
                             className="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-[11px] font-semibold text-foreground hover:bg-muted"
                           >
-                            <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                            <ExternalLink
+                              className="h-3 w-3"
+                              aria-hidden="true"
+                            />
                             DOI
                           </a>
                         )}

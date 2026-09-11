@@ -27,6 +27,10 @@ export type MemberMatch = {
 export type AnswerKind =
   | "research"
   | "product_help"
+  /** Answered from the model's own knowledge, with no paper behind it. The UI
+   *  must say so — an unsourced answer that looks sourced is the worst outcome
+   *  a research tool can produce. */
+  | "general_knowledge"
   | "chit_chat"
   | "unclear";
 
@@ -36,6 +40,12 @@ export type AssistantAnswer = {
   answer: string;
   /** Only papers the model actually cited, in citation order. */
   papers: Paper[];
+  /**
+   * True while the answer is still being written and `papers` are therefore the
+   * raw search results, not the cited subset. The UI titles the block
+   * differently so it never claims a paper was cited before anything cited it.
+   */
+  papersPending?: boolean;
   /** Members working on this topic, ranked. Empty when nobody matches. */
   members: MemberMatch[];
   /** Follow-up searches the user can click. */
@@ -56,4 +66,29 @@ export type AssistantTurn = {
   status: "pending" | "done" | "error";
   answer: AssistantAnswer | null;
   errorMessage: string | null;
+  /** What the server is doing right now, while status is "pending". */
+  stage?: AssistantStage;
 };
+
+export type AssistantStage = "routing" | "searching" | "writing";
+
+/**
+ * One line of the NDJSON the assistant route streams back.
+ *
+ * Newline-delimited JSON rather than server-sent events: every event here is a
+ * whole JSON object, the client reads it with a plain fetch reader, and there is
+ * no event-name or retry semantics to honour. SSE would be ceremony.
+ */
+export type AssistantEvent =
+  | { type: "status"; stage: AssistantStage }
+  | {
+      type: "papers";
+      papers: Paper[];
+      totalFound: number;
+      searchedFor: string;
+    }
+  | { type: "members"; members: MemberMatch[] }
+  /** The answer text SO FAR — cumulative, so the client just assigns it. */
+  | { type: "answer_progress"; text: string }
+  | { type: "done"; answer: AssistantAnswer }
+  | { type: "error"; message: string };

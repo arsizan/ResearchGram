@@ -93,8 +93,19 @@ try {
   );
 
   if (res.status === 429) {
-    bad("rate limited (429) — this is normal without a key, and the app degrades gracefully");
-    info("request a free key at https://www.semanticscholar.org/product/api");
+    bad("rate limited (429) — the app degrades gracefully when this happens");
+    // Print the key status HERE too, not only in the success branch: a 429 while
+    // a key is set means the key is not being honoured, which is a completely
+    // different problem from having no key, and the two look identical without
+    // this line.
+    if (s2Key) {
+      info(`key:         sent (${s2Key.length} chars) — a 429 WITH a key means it`);
+      info("             is not active yet; keys can take days to switch on.");
+      info("             Comment SEMANTIC_SCHOLAR_API_KEY out until it works.");
+    } else {
+      info("key:         none sent — you share one limit with every anonymous caller");
+      info("request a free key at https://www.semanticscholar.org/product/api");
+    }
   } else if (!res.ok) {
     throw new Error(`HTTP ${res.status}`);
   } else {

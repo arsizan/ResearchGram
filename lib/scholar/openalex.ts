@@ -25,35 +25,6 @@ function withMailto(url: URL): URL {
   return url;
 }
 
-async function getJson(url: URL, timeoutMs = 12000): Promise<unknown> {
-  
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(withMailto(url).toString(), {
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        "User-Agent": MAILTO
-          ? `ResearchGram/1.0 (mailto:${MAILTO})`
-          : "ResearchGram/1.0",
-      },
-      // Papers do not change minute to minute. Let Next cache the upstream call.
-      next: { revalidate: 60 * 60 * 24 },
-    });
-
-       if (!response.ok) {
-      throw new OpenAlexError(
-        `OpenAlex ${response.status} for ${url.pathname}`,
-        response.status,
-      );
-    }
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
 export class OpenAlexError extends Error {
   readonly status: number;
 
@@ -107,6 +78,93 @@ export function toOpenAlexQuery(raw: string): string {
   // A query made entirely of stopwords ("how do you do") is still better sent
   // than dropped — the caller decides what an empty result means.
   return kept.length > 0 ? kept.join(" ") : cleaned;
+}
+
+/** 429 and 5xx are weather, not a verdict. 400 is a verdict. */
+const RETRYABLE_STATUS = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Timeouts are deliberately short and the retry count deliberately low.
+ *
+ * This runs inside a Vercel function capped at 60 seconds, behind a routing call
+ * and in front of an answer call. Being generous here does not make the request
+ * succeed — it makes the platform kill the whole thing and hand the user a raw
+ * 504 instead of our error.
+ *
+ * The budget the whole route has to fit inside 60s:
+ *   routing        9s   (lib/ai/intent.ts)
+ *   search      16.8s   (8s x 2 attempts + one 0.8s wait, here)
+ *   enrichment    10s   (capped as a whole in lib/scholar/index.ts)
+ *   answer        20s   (lib/ai/gemini.ts)
+ *                 ----
+ *                 56s   plus request overhead
+ */
+const MAX_ATTEMPTS = 2;
+
+async function getJson(url: URL, timeoutMs = 8000): Promise<unknown> {
+  let lastError: unknown;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(withMailto(url).toString(), {
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          "User-Agent": MAILTO
+            ? `ResearchGram/1.0 (mailto:${MAILTO})`
+            : "ResearchGram/1.0",
+        },
+        // Papers do not change minute to minute. Let Next cache the upstream call.
+        next: { revalidate: 60 * 60 * 24 },
+      });
+
+      if (response.ok) return await response.json();
+
+      if (!RETRYABLE_STATUS.has(response.status) || attempt === MAX_ATTEMPTS) {
+        throw new OpenAlexError(
+          `OpenAlex ${response.status} for ${url.pathname}`,
+          response.status,
+        );
+      }
+
+      // OpenAlex sends Retry-After when it means it. Cap it: waiting 30 seconds
+      // because a header said so is the same as failing, only slower.
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const waitMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.min(retryAfter * 1000, 3000)
+          : 800;
+
+      console.warn(
+        `OPENALEX ${response.status} for ${url.pathname} — retrying in ${waitMs}ms`,
+      );
+      await sleep(waitMs);
+    } catch (error) {
+      if (error instanceof OpenAlexError) throw error;
+
+      lastError = error;
+      if (attempt === MAX_ATTEMPTS) break;
+
+      const aborted = error instanceof Error && error.name === "AbortError";
+      console.warn(
+        `OPENALEX ${aborted ? "timed out" : "network error"} for ${url.pathname} — retrying`,
+      );
+      await sleep(800);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  const aborted = lastError instanceof Error && lastError.name === "AbortError";
+  throw new OpenAlexError(
+    `OpenAlex ${aborted ? "timed out" : "unreachable"} for ${url.pathname}`,
+    aborted ? 504 : 502,
+  );
 }
 
 /**

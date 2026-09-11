@@ -13,7 +13,7 @@
  *    destroys trust, so the safe direction is always "show less".
  */
 
-import { generateStructured } from "./provider";
+import { generateStructured, generateStructuredStream } from "./provider";
 import type { Paper } from "@/lib/scholar/types";
 import type { AnswerKind } from "./types";
 
@@ -47,17 +47,19 @@ const TOOL = {
     "Present the answer to the user's research question, grounded in the numbered papers provided.",
   input_schema: {
     type: "object",
+    // Order matters: Gemini generates properties in this order, and the panel
+    // can only stream text once "answer" has started. It goes first.
     properties: {
+      answer: {
+        type: "string",
+        description:
+          "3-5 sentences answering the question, with [n] citation markers matching the numbered papers. No preamble.",
+      },
       kind: {
         type: "string",
         enum: ["research", "product_help", "unclear"],
         description:
           "research = answered from the papers; product_help = about using ResearchGram; unclear = question too vague to search.",
-      },
-      answer: {
-        type: "string",
-        description:
-          "3-5 sentences answering the question, with [n] citation markers matching the numbered papers. No preamble.",
       },
       cited_papers: {
         type: "array",
@@ -72,7 +74,7 @@ const TOOL = {
           "2 to 4 short follow-up searches a curious reader would run next. Plain search phrases, not questions.",
       },
     },
-    required: ["kind", "answer", "cited_papers", "related_queries"],
+    required: ["answer", "kind", "cited_papers", "related_queries"],
   },
 } as const;
 
@@ -121,13 +123,36 @@ export type ResearchAnswer = {
 
 const VALID_KINDS: AnswerKind[] = ["research", "product_help", "unclear"];
 
+/**
+ * Hide citation markers while the text is still arriving.
+ *
+ * The [n] in the model's draft point at the numbered list it was given; they are
+ * renumbered at the end against the papers that survived validation. A marker
+ * shown mid-stream would therefore change its number under the reader, or turn
+ * out to point at a paper that was dropped. Plain prose now, real clickable
+ * markers when the answer is final.
+ */
+function stripCitationMarkers(text: string): string {
+  return tidy(
+    text
+      .replace(CITATION_MARKER, "")
+      // A marker the model is halfway through writing.
+      .replace(/\s*\[[\d,\s]*$/, ""),
+  );
+}
+
 export async function writeResearchAnswer(
   question: string,
   papers: Paper[],
+  /**
+   * When given, the answer text is reported as it is written. Cumulative: each
+   * call carries the whole text so far, not the newest fragment.
+   */
+  onPartial?: (textSoFar: string) => void,
 ): Promise<ResearchAnswer> {
   const shortlist = papers.slice(0, 12);
 
-  const raw = await generateStructured<RawAnswer>({
+  const request = {
     system: SYSTEM,
     userMessage: buildUserMessage(question, shortlist),
     tool: TOOL as unknown as {
@@ -135,7 +160,15 @@ export async function writeResearchAnswer(
       description: string;
       input_schema: Record<string, unknown>;
     },
-  });
+  };
+
+  const raw = onPartial
+    ? await generateStructuredStream<RawAnswer>({
+        ...request,
+        partialField: "answer",
+        onPartial: (text) => onPartial(stripCitationMarkers(text)),
+      })
+    : await generateStructured<RawAnswer>(request);
 
   const kind: AnswerKind =
     typeof raw.kind === "string" && (VALID_KINDS as string[]).includes(raw.kind)
@@ -149,25 +182,36 @@ export async function writeResearchAnswer(
 
   // Validation. Every citation must be an integer pointing at a paper we
   // actually retrieved; anything else is discarded rather than guessed at.
-  const requested = Array.isArray(raw.cited_papers) ? raw.cited_papers : [];
-  const seen = new Set<number>();
-  const citedPapers: Paper[] = [];
-  const citedOriginalIndexes: number[] = [];
-  let dropped = 0;
+  //
+  // The ANSWER TEXT is what decides which papers are cited, not the model's
+  // cited_papers list. Two reasons: a number in the list that never appears in
+  // the prose would put a paper under "Papers cited" with nothing citing it, and
+  // the order papers are shown in has to be the order they are referred to. The
+  // list is only used when the prose contains no usable marker at all.
+  const inRange = (index: number) =>
+    Number.isInteger(index) && index >= 1 && index <= shortlist.length;
 
-  for (const value of requested) {
-    const index = Number(value);
+  const unique = (indexes: number[]) => [...new Set(indexes)];
 
-    if (!Number.isInteger(index) || index < 1 || index > shortlist.length) {
-      dropped += 1;
-      continue;
-    }
+  const markersInText = extractMarkerIndexes(answerText);
+  const listedByModel = (Array.isArray(raw.cited_papers) ? raw.cited_papers : [])
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
 
-    if (seen.has(index)) continue;
-    seen.add(index);
-    citedOriginalIndexes.push(index);
-    citedPapers.push(shortlist[index - 1]);
-  }
+  const fromText = unique(markersInText.filter(inRange));
+  const fromList = unique(listedByModel.filter(inRange));
+
+  const citedOriginalIndexes = fromText.length > 0 ? fromText : fromList;
+  const citedPapers: Paper[] = citedOriginalIndexes.map(
+    (index) => shortlist[index - 1],
+  );
+
+  // Anything the model reached for that was not there. Counted, not repaired:
+  // a fabricated citation in a research tool is the one failure that destroys
+  // trust, so the safe direction is always "show less".
+  const dropped =
+    unique(markersInText).filter((index) => !inRange(index)).length +
+    unique(listedByModel).filter((index) => !inRange(index)).length;
 
   const relatedQueries = (
     Array.isArray(raw.related_queries) ? raw.related_queries : []
@@ -189,11 +233,48 @@ export async function writeResearchAnswer(
 }
 
 /**
- * Renumber the [n] markers so they match the validated list.
+ * One citation marker: [3], and also [3, 7] and [1,2].
+ *
+ * The prompt asks for one number per bracket and the model mostly complies, but
+ * "mostly" is not a validation strategy. A grouped marker that this did not
+ * match used to survive renumbering untouched — so [3, 7] stayed [3, 7] while
+ * everything around it was rewritten, and it then pointed at two completely
+ * different papers in the list the reader was shown.
+ *
+ * The leading \s* is consumed so a marker that gets dropped does not leave a
+ * space stranded before the full stop. Surviving markers put one space back.
+ */
+const CITATION_MARKER = /\s*\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]/g;
+
+function extractMarkerIndexes(answer: string): number[] {
+  const found: number[] = [];
+
+  for (const match of answer.matchAll(CITATION_MARKER)) {
+    for (const part of match[1].split(",")) {
+      const index = Number(part.trim());
+      if (Number.isInteger(index)) found.push(index);
+    }
+  }
+
+  return found;
+}
+
+/** Tidy the seams left by removing or rewriting markers mid-sentence. */
+function tidy(text: string): string {
+  return text
+    .replace(/ {2,}/g, " ")
+    .replace(/\s+([.,;:!?])/g, "$1")
+    .trim();
+}
+
+/**
+ * Renumber the markers so they match the validated list.
  *
  * If the model cited papers 2, 5 and 9 we now show three papers, so the text has
  * to say [1], [2], [3]. Markers pointing at dropped papers are removed entirely
- * rather than left dangling.
+ * rather than left dangling, and a grouped marker is split into one bracket per
+ * paper — the UI only makes single-number markers clickable, and separate chips
+ * are what a reader can act on anyway.
  */
 function renumberCitations(
   answer: string,
@@ -204,8 +285,16 @@ function renumberCitations(
     mapping.set(original, position + 1);
   });
 
-  return answer.replace(/\[(\d+)\]/g, (match, digits) => {
-    const next = mapping.get(Number(digits));
-    return next ? `[${next}]` : "";
-  });
+  return tidy(
+    answer.replace(CITATION_MARKER, (_match, group: string) => {
+      const renumbered = group
+        .split(",")
+        .map((part) => mapping.get(Number(part.trim())))
+        .filter((value): value is number => typeof value === "number");
+
+      if (renumbered.length === 0) return "";
+
+      return ` ${renumbered.map((value) => `[${value}]`).join("")}`;
+    }),
+  );
 }

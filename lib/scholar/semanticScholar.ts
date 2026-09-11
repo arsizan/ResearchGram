@@ -31,10 +31,20 @@ type S2Paper = {
   openAccessPdf?: { url?: string | null } | null;
 };
 
+/** Never wait longer than this between attempts, whatever Retry-After says. */
+const MAX_BACKOFF_MS = 2000;
+
 /**
  * Semantic Scholar allows one request per second. On a 429 we wait and try again,
  * doubling the delay each time, instead of hammering them or silently dropping the
- * summaries for that search. Their Retry-After header wins when they send one.
+ * summaries for that search. Their Retry-After header wins when they send one —
+ * up to a cap.
+ *
+ * The cap matters more than it looks. This whole request lives inside a 60-second
+ * serverless function, and `Retry-After: 60` on an OPTIONAL enrichment step would
+ * spend the entire budget waiting for a summary nobody needs. An AbortSignal does
+ * not help either: it interrupts `fetch`, not a `setTimeout`, so the sleep has to
+ * bound itself and has to notice when the signal fires.
  */
 async function fetchWithBackoff(
   url: string,
@@ -48,12 +58,35 @@ async function fetchWithBackoff(
     if (response.status !== 429 || attempt >= attempts) return response;
 
     const retryAfter = Number(response.headers.get("retry-after"));
-    const waitMs =
-      Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : delayMs;
+    const waitMs = Math.min(
+      Number.isFinite(retryAfter) && retryAfter > 0
+        ? retryAfter * 1000
+        : delayMs,
+      MAX_BACKOFF_MS,
+    );
 
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    await sleep(waitMs, init.signal);
+    if (init.signal?.aborted) return response;
+
     delayMs *= 2;
   }
+}
+
+/** A wait that ends early when the caller gives up. */
+function sleep(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+
+    const timer = setTimeout(done, ms);
+
+    function done() {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+
+    signal?.addEventListener("abort", done);
+  });
 }
 
 export async function enrichWithSemanticScholar(
@@ -68,8 +101,9 @@ export async function enrichWithSemanticScholar(
   const ids = withDoi.slice(0, 100).map((paper) => `DOI:${paper.doi}`);
 
   const controller = new AbortController();
-  // Long enough to outlast the backoff waits below (1s + 2s) plus three requests.
-  const timer = setTimeout(() => controller.abort(), 20000);
+  // Enrichment is optional and shares a 60-second budget with two model calls
+  // and the search itself. Three attempts plus two capped waits fit in this.
+  const timer = setTimeout(() => controller.abort(), 9000);
 
   try {
     const headers: Record<string, string> = {
@@ -77,7 +111,7 @@ export async function enrichWithSemanticScholar(
     };
     if (API_KEY) headers["x-api-key"] = API_KEY;
 
-      const response = await fetchWithBackoff(`${BATCH_URL}?fields=${FIELDS}`, {
+    const response = await fetchWithBackoff(`${BATCH_URL}?fields=${FIELDS}`, {
       method: "POST",
       headers,
       body: JSON.stringify({ ids }),

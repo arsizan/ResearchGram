@@ -29,9 +29,23 @@ export type GenerateArgs = {
   tool: ToolSpec;
   maxTokens?: number;
   timeoutMs?: number;
-    /**
+  /**
    * Override the provider's default model for this one call. Used by the cheap
    * routing step, which does not need the model that writes the answers.
    */
   model?: string;
+};
+
+export type GenerateStreamArgs = GenerateArgs & {
+  /**
+   * Name of the top-level string property in the tool schema whose value should
+   * be reported as it arrives — "answer", here.
+   */
+  partialField: string;
+  /**
+   * Called with the WHOLE value so far, not the newest fragment. Cumulative
+   * snapshots cost a few hundred extra bytes on a 5-sentence answer and remove
+   * every partial-escape and split-token edge case from the client.
+   */
+  onPartial: (textSoFar: string) => void;
 };
