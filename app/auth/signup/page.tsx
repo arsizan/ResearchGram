@@ -43,15 +43,20 @@ export default function SignUpPage() {
     setLoading(true)
 
     try {
-      console.log('Trying signup with:', email)
-
+      // The profile row is created in the database by the on_auth_user_created
+      // trigger, from this metadata. Doing it here instead fails once email
+      // confirmation is on, because there is no session yet (audit RG-12).
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password,
+        options: {
+          data: {
+            full_name: fullName.trim(),
+            department: department.trim(),
+            skills: skills.trim(),
+          },
+        },
       })
-
-      console.log('Signup data:', data)
-      console.log('Signup error:', error)
 
       if (error) {
         setMessage(`Signup failed: ${error.message}`)
@@ -63,18 +68,9 @@ export default function SignUpPage() {
         return
       }
 
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        email: email.trim(),
-        full_name: fullName.trim(),
-        department: department.trim(),
-        skills: skills.trim(),
-      })
-
-      console.log('Profile insert error:', profileError)
-
-      if (profileError) {
-        setMessage(`Auth user created, but profile was not saved: ${profileError.message}`)
+      // With "Confirm email" on, Supabase returns no session until the link is clicked.
+      if (!data.session) {
+        setMessage('Account created. Check your email for the confirmation link, then log in.')
         return
       }
 

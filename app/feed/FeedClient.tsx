@@ -5,6 +5,7 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification } from "@/lib/notifications";
+import { fetchPostCounts } from "@/lib/postCounts";
 import FeedUI, {
   type Attachment,
   type Comment,
@@ -253,6 +254,8 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       console.log("FETCH COMMENTS ERROR:", commentError);
     }
 
+    // Row level security returns only the viewer's own saves and requests, which
+    // is all the "saved" / "requested" flags need. Totals come from fetchPostCounts.
     const { data: savedRows, error: savedError } = await supabase
       .from("saved_posts")
       .select("content_id, user_id")
@@ -271,6 +274,9 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     if (requestError) {
       console.log("FETCH REQUESTS ERROR:", requestError);
     }
+
+    const { saves: saveCountMap, requests: requestCountMap } =
+      await fetchPostCounts(contentIds);
 
     const { data: paperAccessRows, error: paperAccessError } = await supabase
       .from("paper_access_requests")
@@ -398,24 +404,17 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       });
     });
 
-    const saveCountMap: Record<string, number> = {};
     const userSavedSet = new Set<string>();
 
     (savedRows || []).forEach((save: any) => {
-      saveCountMap[save.content_id] = (saveCountMap[save.content_id] || 0) + 1;
-
       if (activeUserId && save.user_id === activeUserId) {
         userSavedSet.add(save.content_id);
       }
     });
 
-    const requestCountMap: Record<string, number> = {};
     const userRequestedSet = new Set<string>();
 
     (requestRows || []).forEach((request: any) => {
-      requestCountMap[request.content_id] =
-        (requestCountMap[request.content_id] || 0) + 1;
-
       if (activeUserId && request.requester_id === activeUserId) {
         userRequestedSet.add(request.content_id);
       }

@@ -159,6 +159,7 @@ const userId = authUser.id;
     const { data: existingConversation, error: existingError } = await supabase
       .from("conversations")
       .select("id")
+      .eq("conversation_type", "direct")
       .is("request_id", null)
       .is("content_id", null)
       .or(
@@ -197,6 +198,8 @@ const userId = authUser.id;
         content_id: null,
         participant_one_id: participantOneId,
         participant_two_id: participantTwoId,
+        conversation_type: "direct",
+        created_by: currentUserId,
         updated_at: new Date().toISOString(),
       })
       .select("id")
@@ -205,6 +208,33 @@ const userId = authUser.id;
     if (createError || !newConversation) {
       console.log("CREATE DIRECT CONVERSATION ERROR:", createError);
       alert(createError?.message || "Could not start conversation.");
+      setStartingConversationId(null);
+      return;
+    }
+
+    // The Messages page lists conversations by membership, and message access
+    // is checked against it, so both people need a member row (audit RG-10).
+    const now = new Date().toISOString();
+    const { error: memberError } = await supabase
+      .from("conversation_members")
+      .insert([
+        {
+          conversation_id: newConversation.id,
+          user_id: currentUserId,
+          role: "member",
+          last_read_at: now,
+        },
+        {
+          conversation_id: newConversation.id,
+          user_id: targetUserId,
+          role: "member",
+          last_read_at: now,
+        },
+      ]);
+
+    if (memberError) {
+      console.log("CREATE DIRECT CONVERSATION MEMBERS ERROR:", memberError);
+      alert(memberError.message);
       setStartingConversationId(null);
       return;
     }

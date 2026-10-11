@@ -369,7 +369,38 @@ const loadRequests = async () => {
       console.log("CHECK CONVERSATION ERROR:", existingError);
     }
 
+    // Both people need a member row: the Messages page lists conversations by
+    // membership and message access is checked against it (audit RG-10).
+    // ignoreDuplicates makes this safe to repeat for an existing conversation.
+    const addBothMembers = async (conversationId: string) => {
+      const now = new Date().toISOString();
+      const { error: memberError } = await supabase
+        .from("conversation_members")
+        .upsert(
+          [
+            {
+              conversation_id: conversationId,
+              user_id: request.requester_id,
+              role: "member",
+              last_read_at: now,
+            },
+            {
+              conversation_id: conversationId,
+              user_id: request.receiver_id,
+              role: "member",
+              last_read_at: now,
+            },
+          ],
+          { onConflict: "conversation_id,user_id", ignoreDuplicates: true },
+        );
+
+      if (memberError) {
+        console.log("ADD CONVERSATION MEMBERS ERROR:", memberError);
+      }
+    };
+
     if (existingConversation?.id) {
+      await addBothMembers(existingConversation.id as string);
       return existingConversation.id as string;
     }
 
@@ -380,18 +411,22 @@ const loadRequests = async () => {
         content_id: request.content_id,
         participant_one_id: request.requester_id,
         participant_two_id: request.receiver_id,
+        conversation_type: "collaboration",
+        created_by: userId || null,
         updated_at: new Date().toISOString(),
       })
       .select("id")
       .single();
 
-    if (insertError) {
+    if (insertError || !insertedConversation) {
       console.log("CREATE CONVERSATION ERROR:", insertError);
-      alert(insertError.message);
+      alert(insertError?.message || "Could not open the conversation.");
       return null;
     }
 
-    return insertedConversation?.id as string;
+    await addBothMembers(insertedConversation.id as string);
+
+    return insertedConversation.id as string;
   };
 
   const handleUpdateStatus = async (

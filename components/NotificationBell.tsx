@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { safeInternalPath } from "@/lib/notifications";
 import {
   Bell,
   UserPlus,
@@ -239,7 +240,7 @@ export default function NotificationBell() {
   const handleOpenNotification = async (notification: NotificationRow) => {
     if (!notification.is_read) await markOneRead(notification.id);
     setOpen(false);
-    router.push(notification.link_url || "/notifications");
+    router.push(safeInternalPath(notification.link_url, "/notifications"));
   };
 
   if (!userId) return null;

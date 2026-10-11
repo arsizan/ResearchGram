@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { supabase } from "@/lib/supabase";
 import { createNotification } from "@/lib/notifications";
+import { fetchPostCounts } from "@/lib/postCounts";
 import TopicUI from "./UI";
 import type {
   Attachment,
@@ -154,6 +155,10 @@ export default function TopicClient() {
       console.log("TOPIC FETCH REQUESTS ERROR:", requestError);
     }
 
+    // Own rows above drive the "saved" / "requested" flags; totals come from here.
+    const { saves: saveCountMap, requests: requestCountMap } =
+      await fetchPostCounts(contentIds);
+
     const { data: paperAccessRows, error: paperAccessError } = await supabase
       .from("paper_access_requests")
       .select("id, content_id, requester_id, owner_id, status")
@@ -280,24 +285,17 @@ export default function TopicClient() {
       });
     });
 
-    const saveCountMap: Record<string, number> = {};
     const userSavedSet = new Set<string>();
 
     (savedRows || []).forEach((save: any) => {
-      saveCountMap[save.content_id] = (saveCountMap[save.content_id] || 0) + 1;
-
       if (activeUserId && save.user_id === activeUserId) {
         userSavedSet.add(save.content_id);
       }
     });
 
-    const requestCountMap: Record<string, number> = {};
     const userRequestedSet = new Set<string>();
 
     (requestRows || []).forEach((request: any) => {
-      requestCountMap[request.content_id] =
-        (requestCountMap[request.content_id] || 0) + 1;
-
       if (activeUserId && request.requester_id === activeUserId) {
         userRequestedSet.add(request.content_id);
       }

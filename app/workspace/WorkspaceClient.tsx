@@ -18,7 +18,41 @@ import WorkspaceUI, {
   type WorkspaceTab,
 } from "./UI";
 
-const BUCKET_NAME = "content-files";
+// Workspace files go to a private bucket, readable only by workspace members
+// through short-lived signed links (audit RG-05). Path: {workspaceId}/{userId}/{file}.
+// Files uploaded before this change stay in the public content-files bucket
+// under workspace/..., and keep the public link stored with them.
+const WORKSPACE_FILES_BUCKET = "workspace-files";
+const LEGACY_PUBLIC_PREFIX = "workspace/";
+const SIGNED_URL_SECONDS = 60 * 60;
+
+async function withSignedUrls(files: WorkspaceFile[]) {
+  const privatePaths = files
+    .map((file) => file.storage_path)
+    .filter((path) => path && !path.startsWith(LEGACY_PUBLIC_PREFIX));
+
+  if (privatePaths.length === 0) return files;
+
+  const { data, error } = await supabase.storage
+    .from(WORKSPACE_FILES_BUCKET)
+    .createSignedUrls(privatePaths, SIGNED_URL_SECONDS);
+
+  if (error) {
+    console.log("WORKSPACE FILE SIGNED URL ERROR:", error);
+    return files;
+  }
+
+  const urlByPath = new Map<string, string>();
+  for (const item of data || []) {
+    if (item.path && item.signedUrl) urlByPath.set(item.path, item.signedUrl);
+  }
+
+  return files.map((file) =>
+    urlByPath.has(file.storage_path)
+      ? { ...file, file_url: urlByPath.get(file.storage_path) ?? null }
+      : file,
+  );
+}
 
 function getFileExt(fileName: string) {
   return fileName.split(".").pop()?.toLowerCase() || "bin";
@@ -343,7 +377,9 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       console.log("LOAD UPDATES ERROR:", updateResult.error);
 
     setTasks((taskResult.data || []) as WorkspaceTask[]);
-    setWorkspaceFiles((fileResult.data || []) as WorkspaceFile[]);
+    setWorkspaceFiles(
+      await withSignedUrls((fileResult.data || []) as WorkspaceFile[]),
+    );
     setMilestones((milestoneResult.data || []) as WorkspaceMilestone[]);
     setMeetings((meetingResult.data || []) as WorkspaceMeeting[]);
     setRecordings((recordingResult.data || []) as WorkspaceRecording[]);
@@ -852,10 +888,10 @@ await removeUserFromWorkspaceGroupConversation(
       const file = selectedFiles[i];
       const ext = getFileExt(file.name);
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storagePath = `workspace/${userId}/${selectedWorkspaceId}/${Date.now()}-${i}-${safeName}`;
+      const storagePath = `${selectedWorkspaceId}/${userId}/${Date.now()}-${i}-${safeName}`;
 
       const { error: uploadError } = await supabase.storage
-        .from(BUCKET_NAME)
+        .from(WORKSPACE_FILES_BUCKET)
         .upload(storagePath, file, {
           cacheControl: "3600",
           upsert: false,
@@ -868,16 +904,13 @@ await removeUserFromWorkspaceGroupConversation(
         return;
       }
 
-      const { data: publicData } = supabase.storage
-        .from(BUCKET_NAME)
-        .getPublicUrl(storagePath);
-
+      // No permanent link is stored for private files; one is signed on load.
       const { error: insertError } = await supabase
         .from("workspace_files")
         .insert({
           workspace_id: selectedWorkspaceId,
           uploaded_by: userId,
-          file_url: publicData.publicUrl,
+          file_url: null,
           storage_path: storagePath,
           original_name: file.name,
           mime_type: file.type || null,

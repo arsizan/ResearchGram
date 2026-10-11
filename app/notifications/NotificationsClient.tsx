@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { safeInternalPath } from "@/lib/notifications";
 import NotificationsUI, { type NotificationRow } from "./UI";
 
 export default function NotificationsClient() {
@@ -136,7 +137,7 @@ export default function NotificationsClient() {
       await handleMarkRead(notification.id);
     }
 
-    router.push(notification.link_url || "/feed");
+    router.push(safeInternalPath(notification.link_url, "/feed"));
   };
 
   return (
