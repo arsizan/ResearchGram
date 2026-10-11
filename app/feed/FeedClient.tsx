@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification } from "@/lib/notifications";
 import { fetchPostCounts } from "@/lib/postCounts";
+import { asUploadBody, uploadProblem } from "@/lib/uploadRules";
+import { safeFilterTerm } from "@/lib/searchTerm";
 import FeedUI, {
   type Attachment,
   type Comment,
@@ -144,7 +146,9 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
 
   useEffect(() => {
     const searchAuthors = async () => {
-      const query = coAuthorSearch.trim();
+      // Typed text goes inside a PostgREST or() filter; strip the characters that
+      // could end the filter early and add conditions of their own (audit RG-16).
+      const query = safeFilterTerm(coAuthorSearch);
 
       if (query.length < 2) {
         setAuthorSuggestions([]);
@@ -660,7 +664,7 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
 
     const { error: uploadError } = await supabase.storage
       .from(bucketName)
-      .upload(storagePath, file, {
+      .upload(storagePath, asUploadBody(file), {
         cacheControl: "3600",
         upsert: false,
       });
@@ -726,6 +730,18 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       !fullPaperFile
     ) {
       alert("Upload the full paper file for request-based access.");
+      return;
+    }
+
+    // Check every file before the post exists, so a rejected file cannot leave
+    // a half-made post behind (audit RG-21).
+    const fileProblem = [fullPaperFile, ...files]
+      .filter((file): file is File => Boolean(file))
+      .map((file) => uploadProblem(file))
+      .find(Boolean);
+
+    if (fileProblem) {
+      alert(fileProblem);
       return;
     }
 
@@ -954,7 +970,7 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
         requester_id: userId,
         receiver_id: post.user_id,
         request_type: "collaboration",
-        message: requestDrafts[post.id]?.trim() || null,
+        message,
         status: "pending",
       })
       .select("id")
@@ -1024,7 +1040,7 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
         content_id: post.id,
         requester_id: userId,
         owner_id: post.user_id,
-        reason: paperAccessRequestDrafts[post.id]?.trim() || null,
+        reason,
         status: "pending",
       })
       .select("id")

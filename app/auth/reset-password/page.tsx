@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase'
+import { isPasswordRecoverySession, supabase } from '@/lib/supabase'
+import { passwordProblem } from '@/lib/passwordPolicy'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -23,24 +24,39 @@ export default function ResetPasswordPage() {
 
       try {
         /*
-          Supabase recovery links can return with a session directly,
-          or with a code depending on the auth flow.
+          Only a session that came from the reset email may set a new password
+          here (audit RG-13). Being logged in is not enough: otherwise anyone at
+          an unlocked, logged-in browser could change the password without
+          knowing the old one.
+
+          getSession() waits until the auth client has read the link in the URL;
+          it announces PASSWORD_RECOVERY on the next tick, hence the short wait.
         */
-        const url = new URL(window.location.href)
-        const code = url.searchParams.get('code')
+        const { data } = await supabase.auth.getSession()
+        await new Promise((resolve) => setTimeout(resolve, 50))
 
-        if (code) {
+        let fromRecoveryLink = isPasswordRecoverySession()
+
+        // PKCE-style links carry ?code= instead; exchange it ourselves if the
+        // client did not already.
+        const code = new URL(window.location.href).searchParams.get('code')
+        if (!fromRecoveryLink && code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
-
           if (error) {
             console.log('EXCHANGE CODE ERROR:', error)
           }
+          // The exchange announces PASSWORD_RECOVERY itself when the code came
+          // from a reset email, which sets the flag read here.
+          fromRecoveryLink = !error && isPasswordRecoverySession()
         }
 
-        const { data } = await supabase.auth.getSession()
-
-        if (data.session) {
+        if (fromRecoveryLink) {
           setHasSession(true)
+        } else if (data.session) {
+          setHasSession(false)
+          setErrorMessage(
+            'For your security, open the reset link from your email to set a new password. You are logged in, but that is not enough on its own.'
+          )
         } else {
           setHasSession(false)
           setErrorMessage(
@@ -58,14 +74,7 @@ export default function ResetPasswordPage() {
     prepareRecoverySession()
   }, [])
 
-  const getPasswordStrengthMessage = () => {
-    if (!password) return ''
-    if (password.length < 8) return 'Password must be at least 8 characters.'
-    if (!/[A-Z]/.test(password)) return 'Add at least one uppercase letter.'
-    if (!/[a-z]/.test(password)) return 'Add at least one lowercase letter.'
-    if (!/[0-9]/.test(password)) return 'Add at least one number.'
-    return ''
-  }
+  const getPasswordStrengthMessage = () => (password ? passwordProblem(password) : '')
 
   const handleUpdatePassword = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()

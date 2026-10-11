@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import MessagesUI, {
   type ConversationDivision,
@@ -69,6 +69,9 @@ function isSupabaseLockError(error: any) {
 
 export default function MessagesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // /messages?conversation=… (from Network, Requests) opens that chat once (audit RG-11).
+  const requestedConversationIdRef = useRef(searchParams.get("conversation") || "");
 
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState("");
@@ -530,6 +533,22 @@ export default function MessagesClient() {
         if (!isMountedRef.current) return;
 
         setConversations(normalized);
+
+        const requested = requestedConversationIdRef.current
+          ? normalized.find(
+              (conversation) =>
+                conversation.id === requestedConversationIdRef.current,
+            )
+          : undefined;
+
+        if (requested) {
+          requestedConversationIdRef.current = "";
+          activeDivisionRef.current = requested.conversation_type;
+          setActiveDivision(requested.conversation_type);
+          selectedConversationIdRef.current = requested.id;
+          setSelectedConversationId(requested.id);
+          return;
+        }
 
         const currentSelectedId = selectedConversationIdRef.current;
         const currentDivision = activeDivisionRef.current;

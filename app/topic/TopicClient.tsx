@@ -495,7 +495,9 @@ export default function TopicClient() {
         requester_id: userId,
         receiver_id: post.user_id,
         request_type: "collaboration",
-        message: requestDrafts[post.id]?.trim() || null,
+        message:
+          requestDrafts[post.id]?.trim() ||
+          "I am interested in collaborating on this research work.",
         status: "pending",
       })
       .select("id")
@@ -558,7 +560,9 @@ export default function TopicClient() {
         content_id: post.id,
         requester_id: userId,
         owner_id: post.user_id,
-        reason: paperAccessRequestDrafts[post.id]?.trim() || null,
+        reason:
+          paperAccessRequestDrafts[post.id]?.trim() ||
+          "I would like to read the full paper for academic/research purpose.",
         status: "pending",
       })
       .select("id")

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { asUploadBody, uploadProblem } from "@/lib/uploadRules";
 import WorkspaceUI, {
   type Profile,
   type Workspace,
@@ -88,6 +89,9 @@ function getFileCategory(file: File) {
 
 export default function WorkspaceClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // /workspace?workspaceId=… (from Messages) opens that workspace once (audit RG-11).
+  const requestedWorkspaceIdRef = useRef(searchParams.get("workspaceId") || "");
 
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState("");
@@ -405,11 +409,16 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     setWorkspaces(safeWorkspaces);
 
     if (safeWorkspaces.length > 0) {
+      const requested = requestedWorkspaceIdRef.current;
+      requestedWorkspaceIdRef.current = "";
+
       const nextSelected =
-        selectedWorkspaceId &&
-        safeWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId)
-          ? selectedWorkspaceId
-          : safeWorkspaces[0].id;
+        requested && safeWorkspaces.some((workspace) => workspace.id === requested)
+          ? requested
+          : selectedWorkspaceId &&
+              safeWorkspaces.some((workspace) => workspace.id === selectedWorkspaceId)
+            ? selectedWorkspaceId
+            : safeWorkspaces[0].id;
 
       setSelectedWorkspaceId(nextSelected);
       await loadWorkspaceDetails(nextSelected);
@@ -882,6 +891,12 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const fileProblem = selectedFiles.map((file) => uploadProblem(file)).find(Boolean);
+    if (fileProblem) {
+      alert(fileProblem);
+      return;
+    }
+
     setUploadingFile(true);
 
     for (let i = 0; i < selectedFiles.length; i++) {
@@ -892,7 +907,7 @@ await removeUserFromWorkspaceGroupConversation(
 
       const { error: uploadError } = await supabase.storage
         .from(WORKSPACE_FILES_BUCKET)
-        .upload(storagePath, file, {
+        .upload(storagePath, asUploadBody(file), {
           cacheControl: "3600",
           upsert: false,
         });

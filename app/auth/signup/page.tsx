@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { PASSWORD_HINT, passwordProblem } from '@/lib/passwordPolicy'
 
 export default function SignUpPage() {
   const router = useRouter()
@@ -35,8 +36,9 @@ export default function SignUpPage() {
       return
     }
 
-    if (password.length < 6) {
-      setMessage('Password must be at least 6 characters.')
+    const problem = passwordProblem(password)
+    if (problem) {
+      setMessage(problem)
       return
     }
 
@@ -114,10 +116,11 @@ export default function SignUpPage() {
           <input
             className="w-full rounded-xl border p-3 outline-none focus:border-black"
             type="password"
-            placeholder="Password, minimum 6 characters"
+            placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
+          <p className="text-xs text-gray-500">{PASSWORD_HINT}</p>
 
           <input
             className="w-full rounded-xl border p-3 outline-none focus:border-black"

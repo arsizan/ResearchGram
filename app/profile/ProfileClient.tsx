@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { uploadProblem } from "@/lib/uploadRules";
 import ProfileUI from "./UI";
 
 const PROFILE_BUCKET = "profile-avatars";
@@ -161,6 +162,9 @@ if (profileData) {
   };
 
   const uploadFile = async (file: File, folder: string, fileName: string) => {
+    const problem = uploadProblem(file, { imagesOnly: true });
+    if (problem) throw new Error(problem);
+
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const filePath = `${folder}/${fileName}.${ext}`;
 
