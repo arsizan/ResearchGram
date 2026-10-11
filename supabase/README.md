@@ -21,6 +21,13 @@ Open each file, copy all of it into Dashboard → SQL Editor → New query, and 
 When the Supabase CLI is set up later, mark these as already applied with
 `supabase migration repair --status applied <version>` instead of running them again.
 
+## Moving data between projects
+
+`scripts/migrateToMumbai.mjs` copies every table, every login account (same id and
+password hash, from `export-users.sql`) and every storage file from one project to
+another, then compares counts. Run it with `--dry-run` first. See the comment at the top
+of the script for the `.env.migrate` it needs.
+
 ## Emergency off switch
 
 If the site breaks right after `20261012000000_rls_everywhere.sql`, this turns the new

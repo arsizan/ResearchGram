@@ -36,6 +36,9 @@ yarn-error.log*
 # ...except the documented template
 !.env.example
 
+# exported accounts with password hashes, used once for the Mumbai move
+/migration/
+
 # vercel
 .vercel
 
