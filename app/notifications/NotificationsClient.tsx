@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { safeInternalPath } from "@/lib/notifications";
 import NotificationsUI, { type NotificationRow } from "./UI";
+
+// The page shows the newest 15 and grows by 15 with "Load more" (audit RG-17).
+const NOTIFICATION_PAGE_SIZE = 15;
 
 export default function NotificationsClient() {
   const router = useRouter();
@@ -14,25 +17,81 @@ export default function NotificationsClient() {
   const [userId, setUserId] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
+  // Totals come from the database, not from the rows on screen.
+  const [totalCount, setTotalCount] = useState(0);
+  const [unreadTotal, setUnreadTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // How many of the newest notifications every reload fetches, so the ones
+  // loaded with "Load more" stay on screen.
+  const notificationLimitRef = useRef(NOTIFICATION_PAGE_SIZE);
+  const loadingMoreRef = useRef(false);
+  // Reloads can finish out of order. A result is shown only if no newer
+  // reload has been shown already.
+  const requestCounterRef = useRef(0);
+  const shownRequestRef = useRef(0);
 
+  // The full-page loading screen is only for the first load. Reloads (new
+  // notification, mark read, load more) update the list in place, so the
+  // page does not flash or jump back to the top.
   const loadNotifications = async (currentUserId: string) => {
-    setLoading(true);
+    const requestId = ++requestCounterRef.current;
+    const limit = notificationLimitRef.current;
 
-    const { data, error } = await supabase
-      .from("notifications")
-      .select(
-        "id, recipient_id, actor_id, notification_type, title, body, link_url, content_id, request_id, request_kind, is_read, created_at, read_at",
-      )
-      .eq("recipient_id", currentUserId)
-      .order("created_at", { ascending: false })
-      .limit(15);
+    const [listResult, unreadResult] = await Promise.all([
+      supabase
+        .from("notifications")
+        .select(
+          "id, recipient_id, actor_id, notification_type, title, body, link_url, content_id, request_id, request_kind, is_read, created_at, read_at",
+          { count: "exact" },
+        )
+        .eq("recipient_id", currentUserId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      supabase
+        .from("notifications")
+        .select("id", { count: "exact", head: true })
+        .eq("recipient_id", currentUserId)
+        .eq("is_read", false),
+    ]);
 
-    if (error) {
-      console.log("LOAD NOTIFICATIONS PAGE ERROR:", error);
+    if (requestId <= shownRequestRef.current) return;
+
+    if (listResult.error) {
+      // Keep what is on screen.
+      console.log("LOAD NOTIFICATIONS PAGE ERROR:", listResult.error);
+      setLoading(false);
+      return;
     }
 
-    setNotifications((data || []) as NotificationRow[]);
+    shownRequestRef.current = requestId;
+
+    const rows = (listResult.data || []) as NotificationRow[];
+    setNotifications(rows);
+    setTotalCount(listResult.count ?? rows.length);
+
+    if (unreadResult.error) {
+      console.log("COUNT UNREAD NOTIFICATIONS ERROR:", unreadResult.error);
+      setUnreadTotal(rows.filter((item) => !item.is_read).length);
+    } else {
+      setUnreadTotal(unreadResult.count ?? 0);
+    }
+
     setLoading(false);
+  };
+
+  const handleLoadMore = async () => {
+    if (!userId || loadingMoreRef.current) return;
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    notificationLimitRef.current += NOTIFICATION_PAGE_SIZE;
+
+    try {
+      await loadNotifications(userId);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
   };
 
  useEffect(() => {
@@ -149,6 +208,11 @@ export default function NotificationsClient() {
       handleMarkRead={handleMarkRead}
       handleMarkAllRead={handleMarkAllRead}
       handleOpenNotification={handleOpenNotification}
+      totalCount={totalCount}
+      unreadTotal={unreadTotal}
+      hasMore={notifications.length < totalCount}
+      loadingMore={loadingMore}
+      handleLoadMore={handleLoadMore}
     />
   );
 }

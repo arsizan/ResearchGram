@@ -28,6 +28,13 @@ type NotificationsUIProps = {
   handleMarkRead: (notificationId: string) => void;
   handleMarkAllRead: () => void;
   handleOpenNotification: (notification: NotificationRow) => void;
+
+  // Totals from the database and "Load more" (audit RG-17).
+  totalCount?: number;
+  unreadTotal?: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  handleLoadMore?: () => void;
 };
 
 function formatTime(dateString: string | null) {
@@ -82,8 +89,14 @@ export default function NotificationsUI({
   handleMarkRead,
   handleMarkAllRead,
   handleOpenNotification,
+  totalCount,
+  unreadTotal,
+  hasMore = false,
+  loadingMore = false,
+  handleLoadMore,
 }: NotificationsUIProps) {
-  const unreadCount = notifications.filter((item) => !item.is_read).length;
+  const unreadCount =
+    unreadTotal ?? notifications.filter((item) => !item.is_read).length;
 
   const visibleNotifications =
     filter === "unread"
@@ -135,7 +148,7 @@ export default function NotificationsUI({
                   : "text-gray-500 hover:text-gray-900"
               }`}
             >
-              All ({notifications.length})
+              All ({totalCount ?? notifications.length})
             </button>
 
             <button
@@ -232,6 +245,19 @@ export default function NotificationsUI({
             ))
           )}
         </div>
+
+        {hasMore && handleLoadMore && (
+          <div className="mt-6 flex justify-center">
+            <button
+              type="button"
+              onClick={handleLoadMore}
+              disabled={loadingMore}
+              className="rounded-full bg-white px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loadingMore ? "Loading..." : "Load more"}
+            </button>
+          </div>
+        )}
       </section>
     </main>
   );

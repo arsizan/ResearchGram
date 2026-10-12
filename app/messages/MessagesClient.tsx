@@ -51,9 +51,20 @@ function getDisplayName(profile: ProfileLite | null | undefined) {
   return profile?.full_name || profile?.email?.split("@")[0] || "Researcher";
 }
 
-const CONVERSATION_LIST_LIMIT = 10;
-const RECENT_MESSAGE_PREVIEW_LIMIT = 120;
+const CONVERSATION_PAGE_SIZE = 10;
 const MESSAGE_PAGE_SIZE = 30;
+
+// One row per chat I am in, from the my_conversation_summaries() database
+// function: unread count and last message (audit RG-18, RG-19).
+type ConversationSummaryRow = {
+  conversation_id: string;
+  unread_count: number | string;
+  last_message_id: string | null;
+  last_message_body: string | null;
+  last_message_sender_id: string | null;
+  last_message_read_at: string | null;
+  last_message_created_at: string | null;
+};
 
 function isSupabaseLockError(error: any) {
   const message = `${error?.message || ""} ${error?.details || ""} ${
@@ -83,6 +94,24 @@ export default function MessagesClient() {
   const [conversations, setConversations] = useState<ConversationView[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [messages, setMessages] = useState<MessageRow[]>([]);
+
+  // "Show more" in the chat list and "Load older messages" in a chat (audit RG-17).
+  const [conversationListLimit, setConversationListLimit] = useState(
+    CONVERSATION_PAGE_SIZE,
+  );
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  // How many of the newest messages the open chat shows; grows by a page each
+  // time older messages are requested, resets when another chat opens. Every
+  // reload (new message, realtime) fetches this many, so history stays loaded.
+  const messageLimitRef = useRef(MESSAGE_PAGE_SIZE);
+  const messagesConversationIdRef = useRef("");
+  // Replies can arrive out of order. A reply is shown only if no newer request
+  // for the same chat has been shown already (tracked per chat, so loading one
+  // chat never blocks another).
+  const messagesRequestCounterRef = useRef(0);
+  const shownMessagesRequestRef = useRef<Record<string, number>>({});
+  const loadingOlderMessagesRef = useRef(false);
 
   const [messageText, setMessageText] = useState("");
   const [sending, setSending] = useState(false);
@@ -142,9 +171,21 @@ export default function MessagesClient() {
           (conversation) =>
             conversation.conversation_type === activeDivision,
         )
-        .slice(0, CONVERSATION_LIST_LIMIT),
-    [conversations, activeDivision],
+        .slice(0, conversationListLimit),
+    [conversations, activeDivision, conversationListLimit],
   );
+
+  const hasMoreConversations = useMemo(
+    () =>
+      conversations.filter(
+        (conversation) => conversation.conversation_type === activeDivision,
+      ).length > conversationListLimit,
+    [conversations, activeDivision, conversationListLimit],
+  );
+
+  const handleShowMoreConversations = useCallback(() => {
+    setConversationListLimit((limit) => limit + CONVERSATION_PAGE_SIZE);
+  }, []);
 
   // Switching division tabs must also move the selection. Without this,
   // selectedConversationId still points at the previous division's conversation
@@ -153,6 +194,7 @@ export default function MessagesClient() {
     (division: ConversationDivision) => {
       activeDivisionRef.current = division;
       setActiveDivision(division);
+      setConversationListLimit(CONVERSATION_PAGE_SIZE);
 
       // Find the first conversation belonging to the new division
       const firstInDivision = conversations.find(
@@ -319,10 +361,8 @@ export default function MessagesClient() {
         }
 
         // Fetch conversations from every division here, unpaginated, so that one
-        // busy division cannot crowd out another.
-        // NOTE: CONVERSATION_LIST_LIMIT still slices this to 10 per division in
-        // filteredConversations below, so conversation 11 remains unreachable.
-        // Pending fix: cursor pagination (audit RG-17).
+        // busy division cannot crowd out another. filteredConversations shows
+        // them 10 at a time per division, with "Show more" for the rest (RG-17).
         const { data: conversationRows, error: conversationError } =
           await supabase
             .from("conversations")
@@ -428,54 +468,30 @@ export default function MessagesClient() {
           });
         }
 
-        const { data: recentMessages, error: recentMessageError } =
-          await supabase
-            .from("messages")
-            .select(
-              "id, conversation_id, sender_id, body, read_at, is_deleted, created_at",
-            )
-            .in("conversation_id", selectedConversationIds)
-            .eq("is_deleted", false)
-            .order("created_at", { ascending: false })
-            .limit(RECENT_MESSAGE_PREVIEW_LIMIT);
-
-        if (recentMessageError) {
-          console.log("LOAD RECENT MESSAGES ERROR:", recentMessageError);
-        }
-
-        const recent = ((recentMessages || []) as MessageRow[]).filter(
-          (message) => !message.is_deleted,
+        const { data: summaryRows, error: summaryError } = await supabase.rpc(
+          "my_conversation_summaries",
         );
+
+        if (summaryError) {
+          console.log("LOAD CONVERSATION SUMMARIES ERROR:", summaryError);
+        }
 
         const lastMessageMap: Record<string, MessageRow> = {};
         const unreadMap: Record<string, number> = {};
 
-        const membershipMap: Record<string, ConversationMemberRow> = {};
+        ((summaryRows || []) as ConversationSummaryRow[]).forEach((row) => {
+          unreadMap[row.conversation_id] = Number(row.unread_count) || 0;
 
-        myMemberships.forEach((membership) => {
-          membershipMap[membership.conversation_id] = membership;
-        });
-
-        recent.forEach((message) => {
-          if (!lastMessageMap[message.conversation_id]) {
-            lastMessageMap[message.conversation_id] = message;
-          }
-
-          const membership = membershipMap[message.conversation_id];
-          const lastReadTime = membership?.last_read_at
-            ? new Date(membership.last_read_at).getTime()
-            : 0;
-
-          const messageTime = message.created_at
-            ? new Date(message.created_at).getTime()
-            : 0;
-
-          if (
-            message.sender_id !== currentUserId &&
-            messageTime > lastReadTime
-          ) {
-            unreadMap[message.conversation_id] =
-              (unreadMap[message.conversation_id] || 0) + 1;
+          if (row.last_message_id) {
+            lastMessageMap[row.conversation_id] = {
+              id: row.last_message_id,
+              conversation_id: row.conversation_id,
+              sender_id: row.last_message_sender_id || "",
+              body: row.last_message_body,
+              read_at: row.last_message_read_at,
+              is_deleted: false,
+              created_at: row.last_message_created_at,
+            };
           }
         });
 
@@ -545,6 +561,19 @@ export default function MessagesClient() {
           requestedConversationIdRef.current = "";
           activeDivisionRef.current = requested.conversation_type;
           setActiveDivision(requested.conversation_type);
+          const position = normalized
+            .filter(
+              (conversation) =>
+                conversation.conversation_type === requested.conversation_type,
+            )
+            .findIndex((conversation) => conversation.id === requested.id);
+          setConversationListLimit(
+            Math.max(
+              CONVERSATION_PAGE_SIZE,
+              Math.ceil((position + 1) / CONVERSATION_PAGE_SIZE) *
+                CONVERSATION_PAGE_SIZE,
+            ),
+          );
           selectedConversationIdRef.current = requested.id;
           setSelectedConversationId(requested.id);
           return;
@@ -586,12 +615,26 @@ export default function MessagesClient() {
   );
 
   const loadMessages = useCallback(
-    async (conversationId: string, currentUserId: string) => {
+    async (
+      conversationId: string,
+      currentUserId: string,
+      keepMessagesOnError = false,
+    ) => {
       if (!conversationId || !currentUserId) {
         if (isMountedRef.current) setMessages([]);
         return;
       }
 
+      const requestId = ++messagesRequestCounterRef.current;
+
+      // The open chat keeps the number of messages it has loaded; any other
+      // chat starts again from the newest page.
+      const limit =
+        messagesConversationIdRef.current === conversationId
+          ? messageLimitRef.current
+          : MESSAGE_PAGE_SIZE;
+
+      // One extra row tells us whether anything older exists.
       const { data, error } = await supabase
         .from("messages")
         .select(
@@ -600,7 +643,14 @@ export default function MessagesClient() {
         .eq("conversation_id", conversationId)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false })
-        .limit(MESSAGE_PAGE_SIZE);
+        .limit(limit + 1);
+
+      // An older reply, or one for a chat that is no longer open, must not
+      // replace what is on screen.
+      const isCurrent =
+        isMountedRef.current &&
+        requestId > (shownMessagesRequestRef.current[conversationId] || 0) &&
+        selectedConversationIdRef.current === conversationId;
 
       if (error) {
         console.log("LOAD MESSAGES ERROR:", error);
@@ -609,20 +659,46 @@ export default function MessagesClient() {
           alert(error.message);
         }
 
-        if (isMountedRef.current) setMessages([]);
+        if (isCurrent && !keepMessagesOnError) setMessages([]);
         return;
       }
 
-      const safeMessages = ((data || []) as MessageRow[]).reverse();
+      const rows = (data || []) as MessageRow[];
+      const safeMessages = rows.slice(0, limit).reverse();
 
-      if (isMountedRef.current) {
+      if (isCurrent) {
+        shownMessagesRequestRef.current[conversationId] = requestId;
+        if (messagesConversationIdRef.current !== conversationId) {
+          messagesConversationIdRef.current = conversationId;
+          messageLimitRef.current = limit;
+        }
         setMessages(safeMessages);
+        setHasOlderMessages(rows.length > limit);
       }
 
       await markConversationRead(conversationId, currentUserId);
     },
     [markConversationRead],
   );
+
+  const handleLoadOlderMessages = async () => {
+    const conversationId = selectedConversationIdRef.current;
+    if (!conversationId || !userId || loadingOlderMessagesRef.current) return;
+    // The open chat's messages have not arrived yet.
+    if (messagesConversationIdRef.current !== conversationId) return;
+
+    loadingOlderMessagesRef.current = true;
+    setLoadingOlderMessages(true);
+    messageLimitRef.current += MESSAGE_PAGE_SIZE;
+
+    try {
+      // If this fails, keep what is on screen; the button stays to try again.
+      await loadMessages(conversationId, userId, true);
+    } finally {
+      loadingOlderMessagesRef.current = false;
+      if (isMountedRef.current) setLoadingOlderMessages(false);
+    }
+  };
 
   // try/finally so setLoading(false) always runs, even when the auth check
   // redirects or throws. Every setState is guarded by isMountedRef for the same
@@ -1032,6 +1108,11 @@ export default function MessagesClient() {
       handleSendMessage={handleSendMessage}
       handleOpenWorkspace={handleOpenWorkspace}
       handleOpenPost={handleOpenPost}
+      hasMoreConversations={hasMoreConversations}
+      handleShowMoreConversations={handleShowMoreConversations}
+      hasOlderMessages={hasOlderMessages}
+      loadingOlderMessages={loadingOlderMessages}
+      handleLoadOlderMessages={handleLoadOlderMessages}
     />
   );
 }

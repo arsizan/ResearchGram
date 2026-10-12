@@ -9,14 +9,17 @@ not have it.
 | `20261011000000_baseline.sql` | The schema as found on the Sydney project on 11 Oct 2026: tables, indexes, functions, policies, grants, realtime tables, storage buckets. Rebuilt from the read-only report query. |
 | `20261011120000_lockdown.sql` | Emergency lock-down: the anon key loses all table access, RLS on for the workspace tables, storage listing closed, uploads only into your own folder. |
 | `20261012000000_rls_everywhere.sql` | Row level security on every table, profile created by a trigger at sign-up, profile email locked to the login email, private `workspace-files` bucket, `post_engagement_counts` function. Safe to run more than once. |
+| `20261013000000_upload_limits.sql` | Size limits and allowed file types for every storage bucket, matching `lib/uploadRules.ts` (audit RG-21). Safe to run more than once. |
+| `20261014000000_conversation_summaries.sql` | `my_conversation_summaries()`: unread count and last message for each of my chats, used by the Messages page and the nav badge (audit RG-18, RG-19). Read times are stored with the database clock. Safe to run more than once. |
 
 ## Applying them
 
 Open each file, copy all of it into Dashboard → SQL Editor → New query, and Run.
 
-- **New project** (for example the Mumbai one): run all three, in the order above.
-- **Existing Sydney project**: baseline and lock-down are already in place. Run only
-  `20261012000000_rls_everywhere.sql`.
+- **New project**: run all of them, in the order above.
+- **Existing project** (production is Mumbai): run only the files it does not have yet,
+  oldest first. Files from `20261012000000_rls_everywhere.sql` on are safe to run twice,
+  so running one again by mistake does no harm.
 
 When the Supabase CLI is set up later, mark these as already applied with
 `supabase migration repair --status applied <version>` instead of running them again.

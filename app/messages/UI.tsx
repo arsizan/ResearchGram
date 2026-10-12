@@ -2,7 +2,7 @@
 
 
 import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AppNav from "@/components/AppNav";
 import {
   Search, Send, MessageSquare, ChevronLeft, MoreHorizontal,
@@ -107,6 +107,13 @@ type MessagesUIProps = {
   handleSendMessage: () => void;
   handleOpenWorkspace: (workspaceId: string) => void;
   handleOpenPost: (contentId: string) => void;
+
+  // "Show more conversations" and "Load older messages" (audit RG-17).
+  hasMoreConversations?: boolean;
+  handleShowMoreConversations?: () => void;
+  hasOlderMessages?: boolean;
+  loadingOlderMessages?: boolean;
+  handleLoadOlderMessages?: () => void;
 };
 
 // ─── Constants (preserved verbatim) ──────────────────────────────────────────
@@ -324,6 +331,11 @@ export default function MessagesUI({
   handleSendMessage,
   handleOpenWorkspace,
   handleOpenPost,
+  hasMoreConversations = false,
+  handleShowMoreConversations,
+  hasOlderMessages = false,
+  loadingOlderMessages = false,
+  handleLoadOlderMessages,
 }: MessagesUIProps) {
   const [search, setSearch] = useState("");
   const [showNewChat, setShowNewChat] = useState(false);
@@ -344,10 +356,13 @@ export default function MessagesUI({
   }, [conversations]);
 
   // ── Filtered + search applied ───────────────────────────────────────────
+  // A search looks through every chat in this division, not only the ones
+  // shown so far.
   const visibleConversations = useMemo(() => {
     if (!search.trim()) return filteredConversations;
     const q = search.toLowerCase();
-    return filteredConversations.filter((c) => {
+    return conversations.filter((c) => {
+      if (c.conversation_type !== activeDivision) return false;
       const title = (c.display_title || "").toLowerCase();
       const lastBody = (c.last_message?.body || "").toLowerCase();
       const memberMatch = c.members.some((m) =>
@@ -355,17 +370,87 @@ export default function MessagesUI({
       );
       return title.includes(q) || lastBody.includes(q) || memberMatch;
     });
-  }, [filteredConversations, search]);
+  }, [conversations, filteredConversations, activeDivision, search]);
 
   // ── Auto-scroll on new messages / conversation change ───────────────────
-  useEffect(() => {
+  // A new message, another chat or a reload scrolls to the newest message, as
+  // before. Two exceptions (audit RG-17):
+  //  - "Load older messages" adds messages at the top: keep the same distance
+  //    from the bottom, so what you were reading stays where it was.
+  //  - Someone typing only scrolls down if you are already near the bottom, so
+  //    reading older messages is not interrupted.
+  const chatPanelOpen = Boolean(selectedConversation);
+  const firstMessageId = messages[0]?.id || "";
+  const lastMessageId = messages[messages.length - 1]?.id || "";
+  const scrollMemoryRef = useRef({
+    conversationId: "",
+    chatPanelOpen: false,
+    firstId: "",
+    lastId: "",
+    count: 0,
+    distanceFromBottom: 0,
+  });
+  const scrollFrameRef = useRef(0);
+
+  const rememberScrollPosition = () => {
     const el = messagesScrollRef.current;
+    if (el) {
+      scrollMemoryRef.current.distanceFromBottom = el.scrollHeight - el.scrollTop;
+    }
+  };
+
+  useLayoutEffect(() => {
+    const el = messagesScrollRef.current;
+    const memory = scrollMemoryRef.current;
+
+    const sameChat =
+      memory.conversationId === selectedConversationId &&
+      memory.chatPanelOpen === chatPanelOpen;
+    const olderMessagesAdded =
+      sameChat &&
+      memory.lastId === lastMessageId &&
+      memory.firstId !== firstMessageId &&
+      messages.length > memory.count;
+    const onlyTypingChanged =
+      sameChat &&
+      memory.lastId === lastMessageId &&
+      memory.firstId === firstMessageId &&
+      messages.length === memory.count;
+
+    memory.conversationId = selectedConversationId;
+    memory.chatPanelOpen = chatPanelOpen;
+    memory.firstId = firstMessageId;
+    memory.lastId = lastMessageId;
+    memory.count = messages.length;
+
     if (!el) return;
+
+    if (olderMessagesAdded && memory.distanceFromBottom > 0) {
+      cancelAnimationFrame(scrollFrameRef.current);
+      el.scrollTop = el.scrollHeight - memory.distanceFromBottom;
+      return;
+    }
+
+    if (
+      onlyTypingChanged &&
+      memory.distanceFromBottom - el.clientHeight > 150
+    ) {
+      return;
+    }
+
     // Scroll to bottom (most recent message)
-    requestAnimationFrame(() => {
+    cancelAnimationFrame(scrollFrameRef.current);
+    scrollFrameRef.current = requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
-  }, [messages.length, selectedConversationId, typingUsers.length]);
+  }, [
+    selectedConversationId,
+    chatPanelOpen,
+    firstMessageId,
+    lastMessageId,
+    messages.length,
+    typingUsers.length,
+  ]);
 
   // ── Reflect selection on mobile ─────────────────────────────────────────
   useEffect(() => {
@@ -575,7 +660,8 @@ const messageStream: StreamItem[] = useMemo(() => {
                   </p>
                 </div>
               ) : (
-                visibleConversations.map((conv) => {
+                <>
+                {visibleConversations.map((conv) => {
                   const isActive = conv.id === selectedConversationId;
                   const isDirectConv = conv.conversation_type === "direct";
                   const otherMember = getOtherMember(conv, userId);
@@ -632,7 +718,17 @@ const messageStream: StreamItem[] = useMemo(() => {
                       )}
                     </button>
                   );
-                })
+                })}
+                {hasMoreConversations && !search.trim() && handleShowMoreConversations && (
+                  <button
+                    type="button"
+                    onClick={handleShowMoreConversations}
+                    className="w-full px-4 py-3 text-xs font-semibold text-primary hover:bg-muted/60 transition-colors"
+                  >
+                    Show more conversations
+                  </button>
+                )}
+                </>
               )}
             </div>
           </div>
@@ -716,8 +812,24 @@ const messageStream: StreamItem[] = useMemo(() => {
                 {/* Messages area */}
                 <div
                   ref={messagesScrollRef}
+                  onScroll={rememberScrollPosition}
                   className="flex-1 overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:hidden"
                 >
+                  {hasOlderMessages && messageStream.length > 0 && handleLoadOlderMessages && (
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          rememberScrollPosition();
+                          handleLoadOlderMessages();
+                        }}
+                        disabled={loadingOlderMessages}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full border border-border bg-card text-muted-foreground hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {loadingOlderMessages ? "Loading…" : "Load older messages"}
+                      </button>
+                    </div>
+                  )}
                   {messageStream.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                       <div className="text-center">

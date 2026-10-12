@@ -86,33 +86,12 @@ export default function AppNav({ activePage }: AppNavProps) {
         (paperAccessResult.count || 0),
     );
 
-    // Unread message count
-    const { data: conversations, error: conversationError } = await supabase
-      .from("conversations")
-      .select("id")
-      .or(
-        `participant_one_id.eq.${currentUserId},participant_two_id.eq.${currentUserId}`,
-      );
-
-    if (conversationError) {
-      console.log("NAV CONVERSATION COUNT ERROR:", conversationError);
-      setUnreadMessageCount(0);
-      return;
-    }
-
-    const conversationIds = (conversations || []).map((c) => c.id);
-    if (conversationIds.length === 0) {
-      setUnreadMessageCount(0);
-      return;
-    }
-
-    const { count: unreadCount, error: unreadError } = await supabase
-      .from("messages")
-      .select("id", { count: "exact", head: true })
-      .in("conversation_id", conversationIds)
-      .neq("sender_id", currentUserId)
-      .is("read_at", null)
-      .eq("is_deleted", false);
+    // Unread message count: the same numbers the Messages page shows, from
+    // one database function (audit RG-18, RG-19). It covers every chat I am
+    // in, group chats included, and uses my own last-read time.
+    const { data: summaries, error: unreadError } = await supabase.rpc(
+      "my_conversation_summaries",
+    );
 
     if (unreadError) {
       console.log("NAV UNREAD MESSAGE COUNT ERROR:", unreadError);
@@ -120,7 +99,11 @@ export default function AppNav({ activePage }: AppNavProps) {
       return;
     }
 
-    setUnreadMessageCount(unreadCount || 0);
+    const unreadCount = (
+      (summaries || []) as { unread_count: number | string | null }[]
+    ).reduce((total, row) => total + (Number(row.unread_count) || 0), 0);
+
+    setUnreadMessageCount(unreadCount);
   }, []);
 
   // Load profile (name + pic) for avatar
@@ -273,6 +256,16 @@ useEffect(() => {
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "conversations" },
+        refreshCounts,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "conversation_members",
+          filter: `user_id=eq.${userId}`,
+        },
         refreshCounts,
       )
       .subscribe();

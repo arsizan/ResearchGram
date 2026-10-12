@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -19,7 +19,11 @@ import FeedUI, {
 
 const PUBLIC_BUCKET_NAME = "content-files";
 const RESTRICTED_BUCKET_NAME = "restricted-papers";
-const FEED_FIRST_LOAD_LIMIT = 50;
+// The feed shows the newest 50 posts and grows by 50 with "Load more posts"
+// (audit RG-17), up to 150. Each refresh asks for comments, files and authors
+// by post id in the request URL, which must stay short.
+const FEED_PAGE_SIZE = 50;
+const FEED_MAX_POSTS = 150;
 
 function detectAttachmentType(file: File) {
   const name = file.name.toLowerCase();
@@ -116,6 +120,16 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
   const [manualAuthors, setManualAuthors] = useState<string[]>([]);
 
   const [posts, setPosts] = useState<Post[]>([]);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  // How many of the newest posts every refresh fetches, so posts loaded with
+  // "Load more posts" stay on screen when the feed refreshes.
+  const feedLimitRef = useRef(FEED_PAGE_SIZE);
+  const loadingMorePostsRef = useRef(false);
+  // Refreshes can finish out of order. A result is shown only if no newer
+  // refresh has been shown already.
+  const feedRequestCounterRef = useRef(0);
+  const shownFeedRequestRef = useRef(0);
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>(
     {},
   );
@@ -182,25 +196,43 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
   }, [coAuthorSearch, selectedPlatformAuthors, userId]);
 
   const fetchPosts = async (activeUserId?: string) => {
+    const requestId = ++feedRequestCounterRef.current;
+    const isOutdated = () => requestId <= shownFeedRequestRef.current;
+    const showPosts = (nextPosts: Post[], moreAvailable: boolean) => {
+      if (isOutdated()) return;
+      shownFeedRequestRef.current = requestId;
+      setPosts(nextPosts);
+      setHasMorePosts(moreAvailable);
+    };
+
+    const limit = feedLimitRef.current;
+
+    // One extra row tells us whether older posts exist.
     const { data: contents, error: contentError } = await supabase
       .from("contents")
       .select(
         "id, title, content, abstract, content_category, visibility_mode, full_paper_access_mode, allow_full_paper_request, doi, keywords, publication_status, publisher_name, publication_date, post_type, created_at, user_id, profiles:profiles(full_name, email, department, profile_pic_url)",
       )
       .order("created_at", { ascending: false })
-      .limit(FEED_FIRST_LOAD_LIMIT);
+      .limit(limit + 1);
 
     if (contentError) {
       console.log("FETCH CONTENTS ERROR:", contentError);
       return;
     }
 
+    // A newer refresh is already on screen; skip the rest of the work.
+    if (isOutdated()) return;
+
+    const moreAvailable =
+      (contents || []).length > limit && limit < FEED_MAX_POSTS;
+
     if (!contents || contents.length === 0) {
-      setPosts([]);
+      showPosts([], false);
       return;
     }
 
-    const rawContents = (contents || []) as any[];
+    const rawContents = contents.slice(0, limit) as any[];
     let visibleContents = rawContents;
 
     if (activeUserId && rawContents.length > 0) {
@@ -224,7 +256,7 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     }
 
     if (visibleContents.length === 0) {
-      setPosts([]);
+      showPosts([], moreAvailable);
       return;
     }
 
@@ -456,7 +488,25 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
         item.user_id === activeUserId || approvedAccessSet.has(item.id),
     })) as Post[];
 
-    setPosts(normalized);
+    showPosts(normalized, moreAvailable);
+  };
+
+  const handleLoadMorePosts = async () => {
+    if (!userId || loadingMorePostsRef.current) return;
+
+    loadingMorePostsRef.current = true;
+    setLoadingMorePosts(true);
+    feedLimitRef.current = Math.min(
+      FEED_MAX_POSTS,
+      feedLimitRef.current + FEED_PAGE_SIZE,
+    );
+
+    try {
+      await fetchPosts(userId);
+    } finally {
+      loadingMorePostsRef.current = false;
+      setLoadingMorePosts(false);
+    }
   };
 
   useEffect(() => {
@@ -1226,6 +1276,9 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       handleGoToRecommendations={(postId) =>
         router.push(`/recommendations?postId=${postId}`)
       }
+      hasMorePosts={hasMorePosts}
+      loadingMorePosts={loadingMorePosts}
+      handleLoadMorePosts={handleLoadMorePosts}
     />
   );
 }

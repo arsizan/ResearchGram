@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import AppNav from "@/components/AppNav";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import FileViewerModal, { type ViewerFile } from "@/components/FileViewerModal";
@@ -168,6 +168,11 @@ type FeedUIProps = {
   handleGoToMentorship: () => void;
   handleGoToResearcher: (profileId: string) => void;
   handleGoToRecommendations: (postId: string) => void;
+
+  // "Load more posts" (audit RG-17).
+  hasMorePosts?: boolean;
+  loadingMorePosts?: boolean;
+  handleLoadMorePosts?: () => void;
 };
 
 // ─── Constants (preserved + extended) ───────────────────────────────────────
@@ -428,6 +433,7 @@ export default function FeedUI({
   handleSendCollaborationRequest, handleRequestFullPaperAccess,
   handleCopyPostLink, handleHidePost, handleReportPost,
   handleGoToWorkspace, handleGoToMentorship, handleGoToResearcher, handleGoToRecommendations,
+  hasMorePosts = false, loadingMorePosts = false, handleLoadMorePosts,
 }: FeedUIProps) {
   const isPaperPost = contentCategory === "research_paper";
 
@@ -462,15 +468,21 @@ export default function FeedUI({
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([tag, count]) => ({ tag, count }));
   }, [posts]);
 
-  // URL-linked scroll
+  // URL-linked scroll. Only once per linked post: later changes to the list
+  // ("Load more posts", new posts arriving) must not pull the page back to it.
+  const linkedPostScrolledRef = useRef("");
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const postId = params.get("post");
     if (!postId) return;
     setLinkedPostId(postId);
+    if (linkedPostScrolledRef.current === postId) return;
     const t = window.setTimeout(() => {
       const el = document.getElementById(`post-${postId}`);
-      if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el) {
+        linkedPostScrolledRef.current = postId;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }, 400);
     return () => window.clearTimeout(t);
   }, [posts.length]);
@@ -1394,6 +1406,19 @@ if (loading) {
               </div>
             ) : (
               posts.map(renderPost)
+            )}
+
+            {hasMorePosts && handleLoadMorePosts && (
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMorePosts}
+                  disabled={loadingMorePosts}
+                  className="px-5 py-2.5 rounded-xl border border-border bg-card text-sm font-semibold text-foreground shadow-sm hover:bg-muted transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {loadingMorePosts ? "Loading…" : "Load more posts"}
+                </button>
+              </div>
             )}
           </section>
 
