@@ -16,6 +16,25 @@ export class AiError extends Error {
   }
 }
 
+/**
+ * What to write in the server log about a provider's error reply. Error
+ * bodies can repeat the user's question, so in production only the error code
+ * is kept (audit RG-28); in development the start of the body helps debugging.
+ */
+export function providerErrorForLog(body: string): string {
+  if (process.env.NODE_ENV !== "production") return body.slice(0, 500);
+
+  try {
+    const parsed = JSON.parse(body) as {
+      error?: { status?: string; type?: string; code?: string | number };
+    };
+    const error = parsed.error;
+    return String(error?.status || error?.type || error?.code || "no error code");
+  } catch {
+    return "error body is not JSON";
+  }
+}
+
 /** The shape every adapter accepts. Modelled on a tool/function declaration. */
 export type ToolSpec = {
   name: string;

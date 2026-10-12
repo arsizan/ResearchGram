@@ -1,11 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import BrandLogo from "@/components/BrandLogo";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
-  BookOpen, ArrowRight, Sparkles, GitBranch, MessageSquare,
-  FolderKanban, Bell, Lock, Video, Users, CheckCircle2,
-  FileText, Menu, X, Search, Send, Check, Play,
+  ArrowRight,
+  Sparkles,
+  GitBranch,
+  MessageSquare,
+  FolderKanban,
+  Bell,
+  Lock,
+  Video,
+  Users,
+  CheckCircle2,
+  FileText,
+  Menu,
+  X,
+  Send,
+  Check,
 } from "lucide-react";
 
 /* ── Scroll-reveal wrapper (vanilla IntersectionObserver, no extra deps) ── */
@@ -254,7 +267,7 @@ function MessagesPreviewMock() {
         </div>
         <div className="flex justify-end">
           <div className="bg-primary text-white rounded-2xl rounded-br-sm px-3.5 py-2 text-xs max-w-[75%]">
-            Perfect, I'll start preprocessing tonight 🚀
+            Perfect, I&apos;ll start preprocessing tonight 🚀
           </div>
         </div>
         <div className="flex items-end gap-2">
@@ -306,11 +319,7 @@ export default function HomePage() {
       >
         <div className="max-w-[1280px] mx-auto px-4 lg:px-6 h-16 flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
-            <img
-  src="/logos/researchgram-rg-logo.png"
-  alt="ResearchGram logo"
-  className="h-8 w-8 object-contain"
-/>
+            <BrandLogo size={32} className="h-8 w-8" eager />
             <span className="font-extrabold text-lg tracking-tight text-foreground">
               Research<span className="text-primary">Gram</span>
             </span>
@@ -348,7 +357,10 @@ export default function HomePage() {
           </div>
 
           <button
+            type="button"
             onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
             className="md:hidden ml-auto p-2 rounded-xl hover:bg-muted transition-colors flex-shrink-0"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -467,7 +479,11 @@ export default function HomePage() {
 
           {/* Hero visual: floating mockup cards */}
           <Reveal delay={200} className="relative">
-            <div className="relative mx-auto max-w-md lg:max-w-none">
+            <div
+              role="img"
+              aria-label="Preview of ResearchGram: a research post in the feed, project progress and a new collaboration request"
+            >
+            <div inert className="relative mx-auto max-w-md lg:max-w-none">
               {/* main card */}
               <div className="relative z-10 bg-white rounded-3xl shadow-2xl border border-border p-5 animate-float-slow">
                 <div className="flex items-center justify-between border-b border-border pb-3 mb-4">
@@ -515,6 +531,7 @@ export default function HomePage() {
                   <p className="text-[10px] text-muted-foreground">2 min ago</p>
                 </div>
               </div>
+            </div>
             </div>
           </Reveal>
         </div>
@@ -619,6 +636,8 @@ export default function HomePage() {
               {PREVIEW_TABS.map((tab) => (
                 <button
                   key={tab.id}
+                  type="button"
+                  aria-pressed={previewTab === tab.id}
                   onClick={() => setPreviewTab(tab.id)}
                   className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
                     previewTab === tab.id
@@ -633,7 +652,12 @@ export default function HomePage() {
           </Reveal>
 
           <Reveal delay={200}>
-            <div className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-border overflow-hidden">
+            <div
+              role="img"
+              aria-label={`Preview of the ResearchGram ${previewTab} page`}
+              className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-border overflow-hidden"
+            >
+              <div inert>
               <div className="flex items-center gap-2 border-b border-border px-4 py-3 bg-muted/40">
                 <div className="w-2.5 h-2.5 rounded-full bg-red-400" />
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
@@ -646,6 +670,7 @@ export default function HomePage() {
                 {previewTab === "feed" && <FeedPreviewMock />}
                 {previewTab === "workspace" && <WorkspacePreviewMock />}
                 {previewTab === "messages" && <MessagesPreviewMock />}
+              </div>
               </div>
             </div>
           </Reveal>
@@ -690,11 +715,7 @@ export default function HomePage() {
       <footer className="border-t border-border bg-white/60 px-4 lg:px-6 py-10">
         <div className="max-w-[1280px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
           <Link href="/" className="flex items-center gap-2.5">
-            <img
-  src="/logos/researchgram-rg-logo.png"
-  alt="ResearchGram logo"
-  className="h-8 w-8 object-contain"
-/>
+            <BrandLogo size={32} className="h-8 w-8" />
             <span className="font-extrabold text-foreground">
               Research<span className="text-primary">Gram</span>
             </span>

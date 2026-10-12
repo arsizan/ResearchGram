@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { isPasswordRecoverySession, supabase } from '@/lib/supabase'
 import { passwordProblem } from '@/lib/passwordPolicy'
+import { logDev } from '@/lib/log'
+import { friendlyAuthError } from '@/lib/feedback'
 
 export default function ResetPasswordPage() {
   const router = useRouter()
@@ -43,7 +45,7 @@ export default function ResetPasswordPage() {
         if (!fromRecoveryLink && code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (error) {
-            console.log('EXCHANGE CODE ERROR:', error)
+            logDev('EXCHANGE CODE ERROR:', error)
           }
           // The exchange announces PASSWORD_RECOVERY itself when the code came
           // from a reset email, which sets the flag read here.
@@ -64,7 +66,7 @@ export default function ResetPasswordPage() {
           )
         }
       } catch (err) {
-        console.error('Recovery session error:', err)
+        logDev('Recovery session error:', err)
         setErrorMessage('Could not verify the reset link. Please request a new one.')
       } finally {
         setCheckingSession(false)
@@ -102,8 +104,10 @@ export default function ResetPasswordPage() {
       })
 
       if (error) {
-        console.log('UPDATE PASSWORD ERROR:', error)
-        setErrorMessage(error.message)
+        logDev('UPDATE PASSWORD ERROR:', error)
+        setErrorMessage(
+          friendlyAuthError(error, 'Could not update your password. Please request a new reset link.')
+        )
         return
       }
 
@@ -118,7 +122,7 @@ export default function ResetPasswordPage() {
         router.push('/auth/login')
       }, 1200)
     } catch (err) {
-      console.error('Unexpected update password error:', err)
+      logDev('Unexpected update password error:', err)
       setErrorMessage('Something went wrong while updating your password.')
     } finally {
       setLoading(false)
@@ -141,6 +145,7 @@ export default function ResetPasswordPage() {
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form
         onSubmit={handleUpdatePassword}
+        noValidate
         className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg"
       >
         <h1 className="text-3xl font-bold text-gray-900">Create new password</h1>
@@ -150,38 +155,53 @@ export default function ResetPasswordPage() {
         </p>
 
         <div className="mt-6 space-y-4">
-          <input
-            type="password"
-            placeholder="New password"
-            className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            disabled={!hasSession || loading}
-          />
+          <div>
+            <label htmlFor="reset-password" className="mb-1.5 block text-sm font-medium text-gray-700">
+              New password
+            </label>
+            <input
+              id="reset-password"
+              type="password"
+              autoComplete="new-password"
+              aria-describedby={password && strengthMessage ? 'reset-password-strength' : undefined}
+              placeholder="New password"
+              className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={!hasSession || loading}
+            />
+          </div>
 
-          <input
-            type="password"
-            placeholder="Confirm new password"
-            className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            disabled={!hasSession || loading}
-          />
+          <div>
+            <label htmlFor="reset-password-confirm" className="mb-1.5 block text-sm font-medium text-gray-700">
+              Confirm new password
+            </label>
+            <input
+              id="reset-password-confirm"
+              type="password"
+              autoComplete="new-password"
+              placeholder="Confirm new password"
+              className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={!hasSession || loading}
+            />
+          </div>
 
           {password && strengthMessage && (
-            <p className="rounded-xl bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
+            <p id="reset-password-strength" className="rounded-xl bg-yellow-50 px-4 py-3 text-sm text-yellow-700">
               {strengthMessage}
             </p>
           )}
 
           {message && (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+            <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
               {message}
             </p>
           )}
 
           {errorMessage && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
             </p>
           )}

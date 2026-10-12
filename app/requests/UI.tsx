@@ -12,6 +12,7 @@ import {
   MessageSquare,
   ExternalLink,
   Clock,
+  type LucideIcon,
 } from "lucide-react";
 import AppNav from "@/components/AppNav";
 
@@ -27,7 +28,6 @@ export type ContentPost = {
   id: string;
   user_id: string | null;
   title: string | null;
-  content: string | null;
   abstract: string | null;
   post_type: string | null;
   content_category: string | null;
@@ -137,9 +137,9 @@ function Avatar({
     "#4f46e5",
     "#dc2626",
     "#7c3aed",
-    "#0891b2",
-    "#059669",
-    "#d97706",
+    "#0e7490",
+    "#047857",
+    "#b45309",
   ];
 
   const safeName = name || "Researcher";
@@ -147,9 +147,14 @@ function Avatar({
 
   if (url) {
     return (
+      // Avatar from Supabase Storage: a plain <img> so it does not use
+      // Vercel's image-optimization quota.
+      // eslint-disable-next-line @next/next/no-img-element
       <img
         src={url}
         alt={safeName}
+        loading="lazy"
+        decoding="async"
         className="h-12 w-12 flex-shrink-0 rounded-full object-cover"
       />
     );
@@ -178,7 +183,7 @@ function statusStyle(status: RequestStatus) {
 }
 
 function kindMeta(request: UnifiedRequestView): {
-  icon: any;
+  icon: LucideIcon;
   label: string;
   color: string;
 } {
@@ -654,6 +659,7 @@ if (loading) {
         <div className="mb-4 inline-flex rounded-2xl border border-border bg-card p-1 shadow-sm">
           <button
             type="button"
+            aria-pressed={activeTab === "received"}
             onClick={() => {
               setActiveTab("received");
               setFilterChip("all");
@@ -669,6 +675,7 @@ if (loading) {
 
           <button
             type="button"
+            aria-pressed={activeTab === "sent"}
             onClick={() => {
               setActiveTab("sent");
               setFilterChip("all");
@@ -688,6 +695,7 @@ if (loading) {
             <button
               key={chip.value}
               type="button"
+              aria-pressed={filterChip === chip.value}
               onClick={() => setFilterChip(chip.value)}
               className={`flex-shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-all ${
                 filterChip === chip.value
@@ -696,7 +704,7 @@ if (loading) {
               }`}
             >
               {chip.label}
-              <span className="ml-1 text-xs opacity-80">({chip.count})</span>
+              <span className="ml-1 text-xs">({chip.count})</span>
             </button>
           ))}
         </div>

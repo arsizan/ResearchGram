@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+import { isAuthApiError, isAuthSessionMissingError, type User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 
 let currentUserPromise: Promise<User | null> | null = null;
@@ -30,10 +30,22 @@ export function isAuthLockError(error: unknown) {
   );
 }
 
+// Errors that mean "nobody is signed in" rather than "something went wrong".
+const SIGNED_OUT_CODES = new Set(["session_not_found", "user_not_found", "bad_jwt", "session_expired"]);
+
+function isSignedOutError(error: unknown) {
+  if (isAuthSessionMissingError(error)) return true;
+  return isAuthApiError(error) && SIGNED_OUT_CODES.has(String(error.code ?? ""));
+}
+
 async function readCurrentUserOnce() {
   const { data, error } = await supabase.auth.getUser();
 
   if (error) {
+    // getUser() reports a missing session as an error. Treat it as "signed
+    // out" so pages send the visitor to the login page instead of showing an
+    // empty page.
+    if (isSignedOutError(error)) return null;
     throw error;
   }
 

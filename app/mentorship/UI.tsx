@@ -1,5 +1,4 @@
 "use client";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 import AppNav from "@/components/AppNav";
 
 export type Profile = {
@@ -35,7 +34,10 @@ export type MentorRecommendation = {
 type MentorshipUIProps = {
   loading: boolean;
 
+  /** Possible mentors (offer mentorship, faculty or alumni). */
   profiles: Profile[];
+  /** All other profiles, counted in the database. */
+  profileCount?: number;
   existingRequests: ExistingMentorshipRequest[];
   mentorCandidates: Profile[];
   mentorRecommendations: MentorRecommendation[];
@@ -94,6 +96,7 @@ function roleLabel(role: string | null) {
 export default function MentorshipUI({
   loading,
   profiles,
+  profileCount,
   existingRequests,
   mentorCandidates,
   mentorRecommendations,
@@ -151,7 +154,7 @@ export default function MentorshipUI({
 
           <div className="mt-6 grid gap-4 md:grid-cols-4">
             <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
-              <p className="text-2xl font-black">{profiles.length}</p>
+              <p className="text-2xl font-black">{profileCount ?? profiles.length}</p>
               <p className="text-sm text-blue-100">Profiles scanned</p>
             </div>
 
@@ -179,19 +182,20 @@ export default function MentorshipUI({
         </div>
 
         <div className="mt-8 grid gap-6 lg:grid-cols-12">
-          <aside className="lg:col-span-4">
+          <section aria-label="Your mentorship profile and mentor search" className="lg:col-span-4">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
               <h2 className="text-xl font-black text-slate-950">
                 My mentorship profile
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                For demo, you can make one account a Faculty/Alumni mentor and
-                another account a student.
+                Set your role and expertise. Faculty and alumni who turn on
+                mentorship appear in students&apos; mentor search.
               </p>
 
               <div className="mt-5 space-y-3">
                 <select
+                  aria-label="Your role"
                   value={myRole}
                   onChange={(e) => setMyRole(e.target.value)}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-400"
@@ -204,6 +208,7 @@ export default function MentorshipUI({
                 </select>
 
                 <input
+                  aria-label="Academic level"
                   value={myAcademicLevel}
                   onChange={(e) => setMyAcademicLevel(e.target.value)}
                   placeholder="Academic level, e.g. Lecturer, Alumni, 3rd Year Student"
@@ -211,6 +216,7 @@ export default function MentorshipUI({
                 />
 
                 <textarea
+                  aria-label="Expertise"
                   value={myExpertise}
                   onChange={(e) => setMyExpertise(e.target.value)}
                   placeholder="Expertise, e.g. Machine Learning, IoT, Data Mining, Cybersecurity"
@@ -218,6 +224,7 @@ export default function MentorshipUI({
                 />
 
                 <input
+                  aria-label="Office hours or available time"
                   value={myOfficeHours}
                   onChange={(e) => setMyOfficeHours(e.target.value)}
                   placeholder="Office hours / available time"
@@ -253,6 +260,8 @@ export default function MentorshipUI({
 
               <div className="mt-5 space-y-3">
                 <input
+                  type="search"
+                  aria-label="Search mentors by topic"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search topic, e.g. AI, IoT, Networking"
@@ -260,6 +269,7 @@ export default function MentorshipUI({
                 />
 
                 <select
+                  aria-label="Mentor type"
                   value={roleFilter}
                   onChange={(e) => setRoleFilter(e.target.value)}
                   className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-blue-400"
@@ -280,7 +290,7 @@ export default function MentorshipUI({
                 </button>
               </div>
             </div>
-          </aside>
+          </section>
 
           <section className="lg:col-span-8">
             <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -327,9 +337,14 @@ export default function MentorshipUI({
                           <div className="flex gap-4">
                             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-blue-100">
                               {mentor.profile_pic_url ? (
+                                // Avatar from Supabase Storage: a plain <img> so it does not use
+                                // Vercel's image-optimization quota.
+                                // eslint-disable-next-line @next/next/no-img-element
                                 <img
                                   src={mentor.profile_pic_url}
                                   alt={getDisplayName(mentor)}
+                                  loading="lazy"
+                                  decoding="async"
                                   className="h-full w-full object-cover"
                                 />
                               ) : (
@@ -398,7 +413,7 @@ export default function MentorshipUI({
 
                         <div className="mt-5 grid gap-4 md:grid-cols-2">
                           <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-xs font-bold uppercase text-slate-400">
+                            <p className="text-xs font-bold uppercase text-slate-500">
                               Expertise
                             </p>
                             <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-700">
@@ -409,7 +424,7 @@ export default function MentorshipUI({
                           </div>
 
                           <div className="rounded-2xl bg-slate-50 p-4">
-                            <p className="text-xs font-bold uppercase text-slate-400">
+                            <p className="text-xs font-bold uppercase text-slate-500">
                               Office Hours
                             </p>
                             <p className="mt-2 text-sm leading-6 text-slate-700">

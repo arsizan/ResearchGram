@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -15,6 +15,7 @@ import {
   Check,
   ChevronRight,
 } from "lucide-react";
+import { logDev } from "@/lib/log";
 
 type NotificationRow = {
   id: string;
@@ -79,6 +80,7 @@ export default function NotificationBell() {
 
   const [userId, setUserId] = useState("");
   const [open, setOpen] = useState(false);
+  const bellButtonRef = useRef<HTMLButtonElement>(null);
   const [loadingList, setLoadingList] = useState(false);
   const [updating, setUpdating] = useState(false);
 
@@ -96,7 +98,7 @@ export default function NotificationBell() {
       .eq("recipient_id", currentUserId)
       .eq("is_read", false);
     if (error) {
-      console.log("NOTIFICATION COUNT ERROR:", error);
+      logDev("NOTIFICATION COUNT ERROR:", error);
       setUnreadCount(0);
       return;
     }
@@ -115,7 +117,7 @@ export default function NotificationBell() {
       .order("created_at", { ascending: false })
       .limit(15);
     if (error) {
-      console.log("NOTIFICATION LIST ERROR:", error);
+      logDev("NOTIFICATION LIST ERROR:", error);
       setLoadingList(false);
       return;
     }
@@ -147,11 +149,11 @@ export default function NotificationBell() {
         await loadUnreadCount(user.id);
       } catch (error) {
         if (isAuthLockError(error)) {
-          console.log("NOTIFICATION AUTH LOCK ERROR:", error);
+          logDev("NOTIFICATION AUTH LOCK ERROR:", error);
           return;
         }
 
-        console.log("NOTIFICATION AUTH ERROR:", error);
+        logDev("NOTIFICATION AUTH ERROR:", error);
       }
     };
     loadUser();
@@ -179,10 +181,23 @@ export default function NotificationBell() {
     };
   }, [userId, refreshNotificationData]);
 
+  // Escape closes the panel and puts focus back on the bell (RG-32).
   useEffect(() => {
-    if (!open || !userId) return;
-    loadLatestNotifications(userId);
-  }, [open, userId, loadLatestNotifications]);
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setOpen(false);
+      bellButtonRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  const toggleOpen = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && userId) loadLatestNotifications(userId);
+  };
 
   const markOneRead = async (notificationId: string) => {
     if (!userId || updating) return;
@@ -205,7 +220,7 @@ export default function NotificationBell() {
       .eq("recipient_id", userId);
 
     if (error) {
-      console.log("MARK NOTIFICATION READ ERROR:", error);
+      logDev("MARK NOTIFICATION READ ERROR:", error);
       setNotifications(previousNotifications);
       setUnreadCount(previousUnreadCount);
     }
@@ -230,7 +245,7 @@ export default function NotificationBell() {
       .eq("is_read", false);
 
     if (error) {
-      console.log("MARK ALL NOTIFICATIONS READ ERROR:", error);
+      logDev("MARK ALL NOTIFICATIONS READ ERROR:", error);
       setNotifications(previousNotifications);
       setUnreadCount(previousUnreadCount);
     }
@@ -249,21 +264,28 @@ export default function NotificationBell() {
     <>
       <div className="relative">
         <button
+          ref={bellButtonRef}
           type="button"
-          onClick={() => setOpen((c) => !c)}
+          onClick={toggleOpen}
           className="relative p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-          aria-label="Notifications"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          aria-haspopup="dialog"
+          aria-expanded={open}
         >
           <Bell className="w-5 h-5" />
           {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 ring-2 ring-white flex items-center justify-center text-[9px] font-bold text-white">
+            <span className="absolute top-1 right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-600 ring-2 ring-white flex items-center justify-center text-[9px] font-bold text-white">
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
         </button>
 
         {open && (
-          <div className="absolute right-0 top-full mt-2 w-[360px] bg-card border border-border rounded-2xl shadow-xl z-50 overflow-hidden">
+          <div
+            role="dialog"
+            aria-label="Notifications"
+            className="absolute right-0 top-full mt-2 w-[360px] bg-card border border-border rounded-2xl shadow-xl z-50 overflow-hidden"
+          >
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <div>
@@ -324,7 +346,7 @@ export default function NotificationBell() {
                           <p className="text-xs font-bold text-foreground leading-tight">
                             {n.title}
                           </p>
-                          <span className="text-[10px] text-muted-foreground/70 flex-shrink-0">
+                          <span className="text-[10px] text-muted-foreground flex-shrink-0">
                             {formatTime(n.created_at)}
                           </span>
                         </div>
@@ -358,9 +380,9 @@ export default function NotificationBell() {
         )}
       </div>
 
-      {/* Click-outside overlay */}
+      {/* Click-outside overlay for the mouse; keyboard users press Escape. */}
       {open && (
-        <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+        <div aria-hidden="true" className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
       )}
     </>
   );

@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import SearchClient from "./SearchClient";
+import { privatePage } from "@/lib/site";
+
+export const metadata = privatePage("Search");
 
 export default function SearchPage() {
   return (

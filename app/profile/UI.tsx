@@ -8,14 +8,9 @@ import {
   Check,
   X,
   Edit3,
-  UserPlus,
-  MessageSquare,
   Star,
-  MapPin,
   Mail,
-  Calendar,
   Globe,
-  Clock,
   Zap,
   GitBranch,
   BookOpen,
@@ -27,11 +22,10 @@ import {
   Bookmark,
   LogOut,
   Upload,
-  Plus,
-ImageIcon,
-ExternalLink,
-Link2,
-RefreshCcw,
+  ImageIcon,
+  ExternalLink,
+  Link2,
+  RefreshCcw,
 } from "lucide-react";
 
 type ProfileUIProps = {
@@ -203,11 +197,18 @@ handleProfilePicSelect,
       <AppNav activePage="profile" />
 
       {/* ── Cover ────────────────────────────────────────────────────────── */}
-      <div className="relative h-52 lg:h-60 overflow-hidden bg-slate-200 group">
+      <div className="relative h-52 lg:h-60 overflow-hidden bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600 group">
+        {/* Cover photo from Supabase Storage (or the default picture): a plain
+            <img> so it does not use Vercel's image-optimization quota. If it
+            cannot load, the gradient behind it shows instead of a broken image. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
+          key={displayCover}
           src={displayCover}
-          alt="Profile cover"
+          alt=""
+          onError={(event) => {
+            event.currentTarget.style.visibility = "hidden";
+          }}
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-gradient-to-t from-indigo-900/60 via-indigo-700/20 to-transparent pointer-events-none" />
@@ -288,6 +289,8 @@ handleProfilePicSelect,
                 {editMode ? (
                   <input
                     type="text"
+                    aria-label="Full name"
+                    autoComplete="name"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Your full name"
@@ -418,10 +421,10 @@ handleProfilePicSelect,
           <div className="space-y-4">
             {/* Academic info */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
-              <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-primary" /> Academic
                 Information
-              </h3>
+              </h2>
               <dl className="space-y-3">
                 <div>
                   <dt className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-0.5">
@@ -430,6 +433,7 @@ handleProfilePicSelect,
                   {editMode ? (
                     <input
                       type="text"
+                      aria-label="Department"
                       value={dept}
                       onChange={(e) => setDept(e.target.value)}
                       placeholder="e.g. Computer Science & Engineering"
@@ -458,19 +462,21 @@ handleProfilePicSelect,
 
             {/* Skills */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
-              <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-primary" /> Skills & Expertise
-              </h3>
+              </h2>
               {editMode ? (
                 <>
                   <textarea
+                    aria-label="Skills"
+                    aria-describedby="profile-skills-hint"
                     value={skills}
                     onChange={(e) => setSkills(e.target.value)}
                     placeholder="Python, TensorFlow, PyTorch, SQL, …"
                     rows={3}
                     className="w-full text-sm px-3 py-2 bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none resize-none transition-all"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                  <p id="profile-skills-hint" className="text-[11px] text-muted-foreground mt-1.5">
                     Separate skills with commas
                   </p>
                 </>
@@ -494,20 +500,22 @@ handleProfilePicSelect,
 
             {/* Research interests */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
-              <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" /> Research
                 Interests
-              </h3>
+              </h2>
               {editMode ? (
                 <>
                   <textarea
+                    aria-label="Research interests"
+                    aria-describedby="profile-interests-hint"
                     value={interests}
                     onChange={(e) => setInterests(e.target.value)}
                     placeholder="NLP, Machine Learning, IoT Security, …"
                     rows={3}
                     className="w-full text-sm px-3 py-2 bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none resize-none transition-all"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                  <p id="profile-interests-hint" className="text-[11px] text-muted-foreground mt-1.5">
                     Separate interests with commas
                   </p>
                 </>
@@ -531,9 +539,9 @@ handleProfilePicSelect,
 
             {/* Contact */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
-              <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                 <Mail className="w-4 h-4 text-primary" /> Contact
-              </h3>
+              </h2>
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl bg-muted flex items-center justify-center flex-shrink-0">
                   <Mail className="w-4 h-4 text-muted-foreground" />
@@ -550,9 +558,9 @@ handleProfilePicSelect,
             {/* About / Bio */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-foreground">
+                <h2 className="text-sm font-bold text-foreground">
                   About / Bio
-                </h3>
+                </h2>
                 {!editMode && (
                   <button
                     onClick={() => setEditMode(true)}
@@ -564,6 +572,7 @@ handleProfilePicSelect,
               </div>
               {editMode ? (
                 <textarea
+                  aria-label="Bio"
                   value={bio}
                   onChange={(e) => setBio(e.target.value)}
                   placeholder="Write a short bio about your research focus, current work, and what you're passionate about…"
@@ -585,9 +594,9 @@ handleProfilePicSelect,
             {/* Research metrics */}
 <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
   <div className="flex items-center justify-between gap-3 mb-4">
-  <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+  <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
     <BarChart2 className="w-4 h-4 text-primary" /> Research Metrics
-  </h3>
+  </h2>
 
   <div className="flex items-center gap-2">
     {orcidId && (
@@ -689,9 +698,9 @@ handleProfilePicSelect,
 {/* External research profiles */}
 <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
   <div className="flex items-center justify-between mb-4">
-    <h3 className="text-sm font-bold text-foreground flex items-center gap-2">
+    <h2 className="text-sm font-bold text-foreground flex items-center gap-2">
       <Globe className="w-4 h-4 text-primary" /> External Research Profiles
-    </h3>
+    </h2>
 
     {!editMode && (
       <button
@@ -706,26 +715,29 @@ handleProfilePicSelect,
   {editMode ? (
     <div className="space-y-3">
       <div>
-        <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
+        <label htmlFor="profile-orcid" className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
           ORCID iD
         </label>
         <input
+          id="profile-orcid"
           type="text"
+          aria-describedby="profile-orcid-hint"
           value={orcidId}
           onChange={(e) => setOrcidId(e.target.value)}
           placeholder="0000-0002-1825-0097"
           className="w-full text-sm px-3 py-2 bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
         />
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p id="profile-orcid-hint" className="mt-1 text-[11px] text-muted-foreground">
           Enter only your ORCID iD or full ORCID URL.
         </p>
       </div>
 
       <div>
-        <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
+        <label htmlFor="profile-google-scholar" className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
           Google Scholar Profile URL
         </label>
         <input
+          id="profile-google-scholar"
           type="url"
           value={googleScholarUrl}
           onChange={(e) => setGoogleScholarUrl(e.target.value)}
@@ -735,10 +747,11 @@ handleProfilePicSelect,
       </div>
 
       <div>
-        <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
+        <label htmlFor="profile-researchgate" className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
           ResearchGate Profile URL
         </label>
         <input
+          id="profile-researchgate"
           type="url"
           value={researchGateUrl}
           onChange={(e) => setResearchGateUrl(e.target.value)}
@@ -748,10 +761,11 @@ handleProfilePicSelect,
       </div>
 
       <div>
-        <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
+        <label htmlFor="profile-website" className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-1.5">
           Personal Website / Portfolio
         </label>
         <input
+          id="profile-website"
           type="url"
           value={personalWebsiteUrl}
           onChange={(e) => setPersonalWebsiteUrl(e.target.value)}
@@ -830,9 +844,9 @@ handleProfilePicSelect,
               }}
             >
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
+                <h2 className="text-sm font-bold text-indigo-900 flex items-center gap-2">
                   <Star className="w-4 h-4 text-indigo-600" /> Mentorship
-                </h3>
+                </h2>
               </div>
               <p className="text-sm text-indigo-700 mb-4 leading-relaxed">
                 Connect with senior researchers for thesis guidance, paper
@@ -848,9 +862,9 @@ handleProfilePicSelect,
 
             {/* Account section */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-5">
-              <h3 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
+              <h2 className="text-sm font-bold text-foreground mb-4 flex items-center gap-2">
                 <Users className="w-4 h-4 text-primary" /> Account
-              </h3>
+              </h2>
               <div className="space-y-2">
                 <a
                   href="/auth/forgot-password"

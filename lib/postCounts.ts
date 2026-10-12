@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logDev } from "@/lib/log";
 
 type PostCountRow = {
   content_id: string;
@@ -25,7 +26,7 @@ export async function fetchPostCounts(contentIds: string[]) {
   });
 
   if (error) {
-    console.log("FETCH POST COUNTS ERROR:", error);
+    logDev("FETCH POST COUNTS ERROR:", error);
     return { saves, requests };
   }
 

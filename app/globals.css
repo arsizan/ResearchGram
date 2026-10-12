@@ -1,6 +1,5 @@
 /* app/globals.css */
 
-@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap");
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -25,7 +24,7 @@
   --secondary-foreground: #3730a3;
 
   --muted: #f1f5f9;
-  --muted-foreground: #64748b;
+  --muted-foreground: #5b6b80; /* 4.8:1 or more on every light background (RG-32) */
 
   --accent: #eef2ff;
   --accent-foreground: #4338ca;
@@ -44,8 +43,14 @@
   --font-weight-medium: 500;
   --font-weight-normal: 400;
 
-  --font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  /*
+   * The --font-jakarta* and --font-jetbrains variables come from next/font in
+   * app/layout.tsx (RG-33). The Latin Extended and Vietnamese parts come first
+   * on purpose: their character ranges leave out a-z, A-Z, digits and
+   * punctuation, so they are only downloaded for text with letters like Ł or ễ.
+   */
+  --font-sans: var(--font-jakarta-latin-ext), var(--font-jakarta-vietnamese), var(--font-jakarta), system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --chart-1: #4f46e5;
   --chart-2: #7c3aed;
@@ -183,7 +188,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+    font-family: var(--font-sans);
   }
 
   button,

@@ -19,6 +19,7 @@
 
 import {
   AiError,
+  providerErrorForLog,
   type GenerateArgs,
   type GenerateStreamArgs,
 } from "./errors";
@@ -179,9 +180,9 @@ async function toApiError(
   label: string,
 ): Promise<AiError> {
   // Read the body for the log, never for the client: provider errors echo
-  // prompt content back.
+  // prompt content back, so production logs keep only the error code.
   const detail = await response.text();
-  console.error(`${label}:`, response.status, detail.slice(0, 500));
+  console.error(`${label}:`, response.status, providerErrorForLog(detail));
 
   if (response.status === 429) {
     markRateLimited(

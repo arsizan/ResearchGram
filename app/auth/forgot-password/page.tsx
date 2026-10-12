@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { logDev } from '@/lib/log'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -31,7 +32,7 @@ export default function ForgotPasswordPage() {
       })
 
       if (error) {
-        console.log('PASSWORD RESET REQUEST ERROR:', error)
+        logDev('PASSWORD RESET REQUEST ERROR:', error)
 
         /*
           Enterprise-safe message:
@@ -48,7 +49,7 @@ export default function ForgotPasswordPage() {
       )
       setEmail('')
     } catch (err) {
-      console.error('Unexpected password reset error:', err)
+      logDev('Unexpected password reset error:', err)
       setErrorMessage('Something went wrong. Please try again.')
     } finally {
       setLoading(false)
@@ -59,6 +60,7 @@ export default function ForgotPasswordPage() {
     <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <form
         onSubmit={handlePasswordResetRequest}
+        noValidate
         className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg"
       >
         <h1 className="text-3xl font-bold text-gray-900">Reset password</h1>
@@ -68,22 +70,30 @@ export default function ForgotPasswordPage() {
         </p>
 
         <div className="mt-6 space-y-4">
-          <input
-            type="email"
-            placeholder="Email address"
-            className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
+          <div>
+            <label htmlFor="forgot-email" className="mb-1.5 block text-sm font-medium text-gray-700">
+              Email
+            </label>
+            <input
+              id="forgot-email"
+              type="email"
+              autoComplete="email"
+              inputMode="email"
+              placeholder="you@university.edu"
+              className="w-full rounded-xl border border-gray-200 p-3 text-gray-900 placeholder:text-gray-400 outline-none focus:border-black"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
 
           {message && (
-            <p className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+            <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
               {message}
             </p>
           )}
 
           {errorMessage && (
-            <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+            <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
             </p>
           )}

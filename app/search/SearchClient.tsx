@@ -1,215 +1,55 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { logDev } from "@/lib/log";
 import SearchUI, {
   type ContentSearchResult,
   type ProfileSearchResult,
   type SuggestedResearcher,
 } from "./UI";
 
-type ProfileRow = {
-  id: string;
-  full_name: string | null;
-  email: string | null;
-  department: string | null;
-  profile_pic_url: string | null;
-  bio: string | null;
-  skills: string | null;
-  interests: string | null;
-  user_role: string | null;
-  academic_level: string | null;
-  batch: string | null;
-  session: string | null;
-  graduation_year: number | null;
-  current_position: string | null;
-  company_or_institution: string | null;
-  research_area: string | null;
-  expertise: string | null;
-  mentorship_available: boolean | null;
-  profile_completion_score: number | null;
+/*
+ * Matching and ranking run in the database (search_researchers, search_posts,
+ * suggest_researchers; audit RG-06). Before, this page downloaded 300 profiles
+ * and 300 posts and filtered them here. The rules are the same.
+ */
+
+const PROFILE_SELECT =
+  "id, full_name, email, department, profile_pic_url, bio, skills, interests, user_role, academic_level, batch, session, graduation_year, current_position, company_or_institution, research_area, expertise, mentorship_available, profile_completion_score";
+
+type SuggestionRow = ProfileSearchResult & {
+  suggestion_score: number;
+  shared_interest_count: number;
+  search_match_count: number;
+  same_department: boolean;
 };
 
-type ContentRow = {
-  id: string;
-  user_id: string | null;
-  title: string | null;
-  content: string | null;
-  abstract: string | null;
-  post_type: string | null;
-  content_category: string | null;
-  keywords: string | null;
-  created_at: string | null;
-};
+type PostResultRow = Omit<ContentSearchResult, "owner">;
 
-function normalizeText(value: string | null | undefined) {
-  return (value || "")
-    .toLowerCase()
-    .replace(/[^\w\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function getTokens(...values: Array<string | null | undefined>) {
-  const text = normalizeText(values.filter(Boolean).join(" "));
-
-  return new Set(
-    text
-      .split(" ")
-      .map((item) => item.trim())
-      .filter((item) => item.length >= 2),
-  );
-}
-
-function includesQuery(query: string, ...values: Array<string | null | undefined>) {
-  const q = normalizeText(query);
-
-  if (!q) return false;
-
-  const text = normalizeText(values.filter(Boolean).join(" "));
-
-  return text.includes(q);
-}
-
-function overlapCount(a: Set<string>, b: Set<string>) {
-  let count = 0;
-
-  a.forEach((item) => {
-    if (b.has(item)) count += 1;
-  });
-
-  return count;
-}
-
-function profileDisplayName(profile: ProfileRow | ProfileSearchResult) {
-  return (
-    profile.full_name ||
-    profile.email?.split("@")[0] ||
-    "ResearchGram User"
-  );
-}
-
-function calculateSuggestionReason(
-  profile: ProfileRow,
-  currentProfile: ProfileRow | null,
-  searchTokens: Set<string>,
-) {
+// Same wording as before the move to the database.
+function suggestionReason(row: SuggestionRow) {
   const reasons: string[] = [];
 
-  if (
-    currentProfile?.department &&
-    profile.department &&
-    currentProfile.department.toLowerCase() === profile.department.toLowerCase()
-  ) {
-    reasons.push("same department");
-  }
+  if (row.same_department) reasons.push("same department");
+  if (row.user_role === "alumni") reasons.push("alumni");
+  if (row.user_role === "faculty") reasons.push("faculty");
+  if (row.mentorship_available) reasons.push("available for mentorship");
 
-  if (profile.user_role === "alumni") {
-    reasons.push("alumni");
-  }
-
-  if (profile.user_role === "faculty") {
-    reasons.push("faculty");
-  }
-
-  if (profile.mentorship_available) {
-    reasons.push("available for mentorship");
-  }
-
-  const currentTokens = getTokens(
-    currentProfile?.skills,
-    currentProfile?.interests,
-    currentProfile?.research_area,
-    currentProfile?.expertise,
-  );
-
-  const profileTokens = getTokens(
-    profile.skills,
-    profile.interests,
-    profile.research_area,
-    profile.expertise,
-    profile.bio,
-  );
-
-  const shared = overlapCount(currentTokens, profileTokens);
-  const searchMatch = overlapCount(searchTokens, profileTokens);
-
+  const shared = Number(row.shared_interest_count) || 0;
   if (shared > 0) {
     reasons.push(`${shared} shared academic interest${shared > 1 ? "s" : ""}`);
   }
 
-  if (searchMatch > 0) {
+  if ((Number(row.search_match_count) || 0) > 0) {
     reasons.push("matches your recent searches");
   }
 
-  if (reasons.length === 0) {
-    reasons.push("active research profile");
-  }
+  if (reasons.length === 0) reasons.push("active research profile");
 
   return reasons.slice(0, 3).join(" · ");
-}
-
-function scoreSuggestion(
-  profile: ProfileRow,
-  currentProfile: ProfileRow | null,
-  searchTokens: Set<string>,
-) {
-  let score = 0;
-
-  if (!currentProfile) return score;
-
-  const currentTokens = getTokens(
-    currentProfile.skills,
-    currentProfile.interests,
-    currentProfile.research_area,
-    currentProfile.expertise,
-  );
-
-  const profileTokens = getTokens(
-    profile.skills,
-    profile.interests,
-    profile.research_area,
-    profile.expertise,
-    profile.bio,
-  );
-
-  const sharedInterestCount = overlapCount(currentTokens, profileTokens);
-  const recentSearchMatchCount = overlapCount(searchTokens, profileTokens);
-
-  score += sharedInterestCount * 12;
-  score += recentSearchMatchCount * 8;
-
-  if (
-    currentProfile.department &&
-    profile.department &&
-    currentProfile.department.toLowerCase() === profile.department.toLowerCase()
-  ) {
-    score += 20;
-  }
-
-  if (currentProfile.user_role === "student" && profile.user_role === "alumni") {
-    score += 18;
-  }
-
-  if (currentProfile.user_role === "student" && profile.user_role === "faculty") {
-    score += 18;
-  }
-
-  if (profile.mentorship_available) {
-    score += 12;
-  }
-
-  if ((profile.profile_completion_score || 0) >= 70) {
-    score += 8;
-  }
-
-  if (profile.current_position || profile.company_or_institution) {
-    score += 5;
-  }
-
-  return score;
 }
 
 export default function SearchClient() {
@@ -218,232 +58,162 @@ export default function SearchClient() {
 
   const urlQuery = searchParams.get("q") || "";
 
-  const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState("");
   const [query, setQuery] = useState(urlQuery);
+  // The search box follows the address when it changes (back/forward, new search).
+  const [queryFromUrl, setQueryFromUrl] = useState(urlQuery);
+  if (queryFromUrl !== urlQuery) {
+    setQueryFromUrl(urlQuery);
+    setQuery(urlQuery);
+  }
 
   const [profiles, setProfiles] = useState<ProfileSearchResult[]>([]);
   const [contents, setContents] = useState<ContentSearchResult[]>([]);
   const [suggestions, setSuggestions] = useState<SuggestedResearcher[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
+  // Results shown are for this query; loading until it matches the address.
+  const [loadedQuery, setLoadedQuery] = useState<string | null>(null);
+  const loading = loadedQuery !== urlQuery;
 
   const trimmedQuery = useMemo(() => query.trim(), [query]);
 
-const loadSearch = async (currentQuery: string) => {
-  setLoading(true);
+  const loadSearch = useCallback(
+    async (currentQuery: string, isCancelled: () => boolean) => {
+      try {
+        const authUser = await getCurrentUserSafe();
 
-  try {
-    const authUser = await getCurrentUserSafe();
+        if (!authUser) {
+          router.push("/auth/login");
+          return;
+        }
 
-    if (!authUser) {
-      router.push("/auth/login");
-      return;
-    }
+        if (isCancelled()) return;
 
-    const currentUserId = authUser.id;
-    setUserId(currentUserId);
+        const currentUserId = authUser.id;
+        setUserId(currentUserId);
 
-    const profileSelect =
-      "id, full_name, email, department, profile_pic_url, bio, skills, interests, user_role, academic_level, batch, session, graduation_year, current_position, company_or_institution, research_area, expertise, mentorship_available, profile_completion_score";
+        // Suggestions use the searches made before this one, as before.
+        const [recentSearchResult, suggestionResult] = await Promise.all([
+          supabase
+            .from("search_events")
+            .select("query")
+            .eq("user_id", currentUserId)
+            .order("created_at", { ascending: false })
+            .limit(10),
+          supabase.rpc("suggest_researchers", { max_results: 8 }),
+        ]);
 
-    const [
-      currentProfileResult,
-      allProfilesResult,
-      recentSearchResult,
-      hiddenPostsResult,
-      contentResult,
-    ] = await Promise.all([
-      supabase
-        .from("profiles")
-        .select(profileSelect)
-        .eq("id", currentUserId)
-        .maybeSingle(),
+        if (recentSearchResult.error) {
+          logDev("SEARCH HISTORY ERROR:", recentSearchResult.error);
+        }
 
-      supabase
-        .from("profiles")
-        .select(profileSelect)
-        .neq("id", currentUserId)
-        .limit(300),
+        if (suggestionResult.error) {
+          logDev("SEARCH SUGGESTIONS ERROR:", suggestionResult.error);
+        }
 
-      supabase
-        .from("search_events")
-        .select("query")
-        .eq("user_id", currentUserId)
-        .order("created_at", { ascending: false })
-        .limit(10),
+        if (isCancelled()) return;
 
-      supabase
-        .from("hidden_posts")
-        .select("content_id")
-        .eq("user_id", currentUserId),
+        setRecentSearches(
+          ((recentSearchResult.data || []) as { query: string | null }[])
+            .map((item) => item.query || "")
+            .filter(Boolean),
+        );
 
-      supabase
-        .from("contents")
-        .select(
-          "id, user_id, title, content, abstract, post_type, content_category, keywords, created_at",
-        )
-        .order("created_at", { ascending: false })
-        .limit(300),
-    ]);
+        setSuggestions(
+          ((suggestionResult.data || []) as SuggestionRow[]).map((row) => ({
+            ...row,
+            suggestion_score: Number(row.suggestion_score) || 0,
+            suggestion_reason: suggestionReason(row),
+          })),
+        );
 
-    if (currentProfileResult.error) {
-      console.log("SEARCH CURRENT PROFILE ERROR:", currentProfileResult.error);
-    }
+        const q = currentQuery.trim();
 
-    if (allProfilesResult.error) {
-      console.log("SEARCH ALL PROFILES ERROR:", allProfilesResult.error);
-    }
+        if (!q) {
+          setProfiles([]);
+          setContents([]);
+          return;
+        }
 
-    if (recentSearchResult.error) {
-      console.log("SEARCH HISTORY ERROR:", recentSearchResult.error);
-    }
+        const { error: searchEventError } = await supabase.from("search_events").insert({
+          user_id: currentUserId,
+          query: q,
+          search_type: "global",
+        });
 
-    if (hiddenPostsResult.error) {
-      console.log("SEARCH HIDDEN POSTS ERROR:", hiddenPostsResult.error);
-    }
+        if (searchEventError) {
+          logDev("SAVE SEARCH EVENT ERROR:", searchEventError);
+        }
 
-    if (contentResult.error) {
-      console.log("SEARCH CONTENT ERROR:", contentResult.error);
-    }
+        const [profileResult, postResult] = await Promise.all([
+          supabase.rpc("search_researchers", { search_text: q, max_results: 40 }),
+          supabase.rpc("search_posts", { search_text: q, max_results: 40 }),
+        ]);
 
-    const currentProfile = (currentProfileResult.data || null) as ProfileRow | null;
-    const allProfiles = (allProfilesResult.data || []) as ProfileRow[];
-    const allContents = (contentResult.data || []) as ContentRow[];
+        if (profileResult.error) {
+          logDev("SEARCH PROFILES ERROR:", profileResult.error);
+        }
 
-    const hiddenPostIds = new Set(
-      (hiddenPostsResult.data || []).map((row: any) => row.content_id),
-    );
+        if (postResult.error) {
+          logDev("SEARCH POSTS ERROR:", postResult.error);
+        }
 
-    const searchHistory = (recentSearchResult.data || [])
-      .map((item: any) => item.query)
-      .filter(Boolean);
-
-    setRecentSearches(searchHistory);
-
-    const recentSearchTokens = getTokens(...searchHistory);
-
-    const scoredSuggestions = allProfiles
-      .map((profile) => {
-        const score = scoreSuggestion(profile, currentProfile, recentSearchTokens);
-
-        return {
-          ...profile,
-          suggestion_score: score,
-          suggestion_reason: calculateSuggestionReason(
-            profile,
-            currentProfile,
-            recentSearchTokens,
+        const matchedPosts = (postResult.data || []) as PostResultRow[];
+        const ownerIds = Array.from(
+          new Set(
+            matchedPosts
+              .map((item) => item.user_id)
+              .filter((item): item is string => Boolean(item)),
           ),
-        };
-      })
-      .filter((profile) => profile.suggestion_score > 0)
-      .sort((a, b) => b.suggestion_score - a.suggestion_score)
-      .slice(0, 8);
+        );
 
-    setSuggestions(scoredSuggestions as SuggestedResearcher[]);
+        const ownerMap: Record<string, ProfileSearchResult> = {};
 
-    const q = currentQuery.trim();
+        if (ownerIds.length > 0) {
+          const { data: ownerProfiles, error: ownerError } = await supabase
+            .from("profiles")
+            .select(PROFILE_SELECT)
+            .in("id", ownerIds);
 
-    if (!q) {
-      setProfiles([]);
-      setContents([]);
-      return;
-    }
+          if (ownerError) {
+            logDev("SEARCH CONTENT OWNER ERROR:", ownerError);
+          }
 
-    const { error: searchEventError } = await supabase.from("search_events").insert({
-      user_id: currentUserId,
-      query: q,
-      search_type: "global",
-    });
+          ((ownerProfiles || []) as ProfileSearchResult[]).forEach((profile) => {
+            ownerMap[profile.id] = profile;
+          });
+        }
 
-    if (searchEventError) {
-      console.log("SAVE SEARCH EVENT ERROR:", searchEventError);
-    }
+        if (isCancelled()) return;
 
-    const matchedProfiles = allProfiles
-      .filter((profile) =>
-        includesQuery(
-          q,
-          profile.full_name,
-          profile.email,
-          profile.department,
-          profile.skills,
-          profile.interests,
-          profile.user_role,
-          profile.academic_level,
-          profile.batch,
-          profile.session,
-          profile.current_position,
-          profile.company_or_institution,
-          profile.research_area,
-          profile.expertise,
-          profile.bio,
-        ),
-      )
-      .slice(0, 40);
+        setProfiles((profileResult.data || []) as ProfileSearchResult[]);
+        setContents(
+          matchedPosts.map((item) => ({
+            ...item,
+            owner: item.user_id ? ownerMap[item.user_id] || null : null,
+          })),
+        );
+      } catch (error) {
+        if (isAuthLockError(error)) {
+          logDev("SEARCH AUTH LOCK ERROR:", error);
+          return;
+        }
 
-    const contentOwnerIds = Array.from(
-      new Set(
-        allContents
-          .map((item) => item.user_id)
-          .filter((item): item is string => Boolean(item)),
-      ),
-    );
-
-    const ownerMap: Record<string, ProfileRow> = {};
-
-    if (contentOwnerIds.length > 0) {
-      const { data: ownerProfiles, error: ownerError } = await supabase
-        .from("profiles")
-        .select(profileSelect)
-        .in("id", contentOwnerIds);
-
-      if (ownerError) {
-        console.log("SEARCH CONTENT OWNER ERROR:", ownerError);
+        logDev("SEARCH LOAD ERROR:", error);
+      } finally {
+        if (!isCancelled()) setLoadedQuery(currentQuery);
       }
-
-      (ownerProfiles || []).forEach((profile: any) => {
-        ownerMap[profile.id] = profile as ProfileRow;
-      });
-    }
-
-    const matchedContents = allContents
-      .filter((item) => !hiddenPostIds.has(item.id))
-      .filter((item) =>
-        includesQuery(
-          q,
-          item.title,
-          item.content,
-          item.abstract,
-          item.keywords,
-          item.post_type,
-          item.content_category,
-        ),
-      )
-      .map((item) => ({
-        ...item,
-        owner: item.user_id ? ownerMap[item.user_id] || null : null,
-      }))
-      .slice(0, 40);
-
-    setProfiles(matchedProfiles as ProfileSearchResult[]);
-    setContents(matchedContents as ContentSearchResult[]);
-  } catch (error) {
-    if (isAuthLockError(error)) {
-      console.log("SEARCH AUTH LOCK ERROR:", error);
-      return;
-    }
-
-    console.log("SEARCH LOAD ERROR:", error);
-  } finally {
-    setLoading(false);
-  }
-};
+    },
+    [router],
+  );
 
   useEffect(() => {
-    setQuery(urlQuery);
-    loadSearch(urlQuery);
-  }, [urlQuery]);
+    let cancelled = false;
+    loadSearch(urlQuery, () => cancelled);
+    return () => {
+      cancelled = true;
+    };
+  }, [urlQuery, loadSearch]);
 
   const handleSearchSubmit = () => {
     const nextQuery = trimmedQuery;

@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { friendlyError, notify } from "@/lib/feedback";
+import { logDev } from "@/lib/log";
 import { uploadProblem } from "@/lib/uploadRules";
 import ProfileUI from "./UI";
 
@@ -84,7 +86,7 @@ function isValidOrcidId(value: string) {
         .single();
 
       if (profileError) {
-        console.log("LOAD PROFILE ERROR:", profileError);
+        logDev("LOAD PROFILE ERROR:", profileError);
       }
 
       if (cancelled) return;
@@ -110,11 +112,11 @@ if (profileData) {
 }
     } catch (error) {
       if (isAuthLockError(error)) {
-        console.log("PROFILE AUTH LOCK ERROR:", error);
+        logDev("PROFILE AUTH LOCK ERROR:", error);
         return;
       }
 
-      console.error("PROFILE LOAD ERROR:", error);
+      logDev("PROFILE LOAD ERROR:", error);
     } finally {
       if (!cancelled) {
         setLoading(false);
@@ -161,9 +163,13 @@ if (profileData) {
     reader.readAsDataURL(file);
   };
 
+  // Returns null when the file is not allowed (the reason is shown to the user).
   const uploadFile = async (file: File, folder: string, fileName: string) => {
     const problem = uploadProblem(file, { imagesOnly: true });
-    if (problem) throw new Error(problem);
+    if (problem) {
+      notify(problem, "error");
+      return null;
+    }
 
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const filePath = `${folder}/${fileName}.${ext}`;
@@ -176,7 +182,7 @@ if (profileData) {
       });
 
     if (uploadError) {
-      throw new Error(uploadError.message);
+      throw uploadError;
     }
 
     const { data } = supabase.storage
@@ -198,6 +204,8 @@ if (profileData) {
         `profile-${Date.now()}`,
       );
 
+      if (!url) return;
+
       setProfilePicUrl(url);
       setProfilePicFile(null);
       setPreviewProfileUrl("");
@@ -211,11 +219,10 @@ if (profileData) {
 
       if (error) throw error;
 
-      alert("Profile picture updated!");
+      notify("Profile picture updated!", "success");
     } catch (error) {
-      alert(
-        "Error: " + (error instanceof Error ? error.message : "Unknown error"),
-      );
+      logDev("UPLOAD PROFILE PICTURE ERROR:", error);
+      notify(friendlyError(error, "Could not update the profile picture."), "error");
     } finally {
       setUploading(false);
     }
@@ -233,6 +240,8 @@ if (profileData) {
         `cover-${Date.now()}`,
       );
 
+      if (!url) return;
+
       setCoverPhotoUrl(url);
       setCoverPhotoFile(null);
       setPreviewCoverUrl("");
@@ -246,11 +255,10 @@ if (profileData) {
 
       if (error) throw error;
 
-      alert("Cover photo updated!");
+      notify("Cover photo updated!", "success");
     } catch (error) {
-      alert(
-        "Error: " + (error instanceof Error ? error.message : "Unknown error"),
-      );
+      logDev("UPLOAD COVER PHOTO ERROR:", error);
+      notify(friendlyError(error, "Could not update the cover photo."), "error");
     } finally {
       setUploading(false);
     }
@@ -258,11 +266,11 @@ if (profileData) {
 
   const handleSave = async () => {
     if (!userId) {
-      alert("You must be logged in.");
+      notify("Log in to save your profile.", "error");
       return;
     }
     if (!isValidOrcidId(orcidId)) {
-  alert("Invalid ORCID iD. Example format: 0000-0002-1825-0097");
+  notify("Invalid ORCID iD. Example format: 0000-0002-1825-0097", "error");
   return;
 }
 
@@ -286,97 +294,75 @@ if (profileData) {
 
       if (error) throw error;
 
-      alert("Profile saved!");
+      notify("Profile saved!", "success");
       setEditMode(false);
     } catch (error) {
-      alert(
-        "Error: " + (error instanceof Error ? error.message : "Unknown error"),
-      );
+      logDev("SAVE PROFILE ERROR:", error);
+      notify(friendlyError(error, "Could not save your profile."), "error");
     } finally {
       setSaving(false);
     }
   };
   const handleSyncExternalMetrics = async () => {
-  if (!userId) {
-    alert("You must be logged in.");
-    return;
-  }
-
-  const cleanId = cleanOrcidId(orcidId);
-
-  if (!cleanId) {
-    alert("Add your ORCID iD first.");
-    return;
-  }
-
-  if (!isValidOrcidId(cleanId)) {
-    alert("Invalid ORCID iD. Example format: 0000-0002-1825-0097");
-    return;
-  }
-
-  setSyncingMetrics(true);
-
-  try {
-    const orcidUrl = `https://orcid.org/${cleanId}`;
-
-    const openAlexUrl = `https://api.openalex.org/authors/${encodeURIComponent(
-      orcidUrl,
-    )}`;
-
-    const response = await fetch(openAlexUrl, {
-      headers: {
-        Accept: "application/json",
-      },
-    });
-
-    if (!response.ok) {
-      alert(
-        "No OpenAlex author profile was found for this ORCID iD. The ORCID link is saved, but publication and citation metrics could not be synced.",
-      );
+    if (!userId) {
+      notify("Log in to sync research metrics.", "error");
       return;
     }
 
-    const authorData = await response.json();
+    const cleanId = cleanOrcidId(orcidId);
 
-    const publications = Number(authorData.works_count || 0);
-    const citations = Number(authorData.cited_by_count || 0);
-    const hIndex = Number(authorData.summary_stats?.h_index || 0);
-    const syncedAt = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        orcid_id: cleanId,
-        external_publication_count: publications,
-        external_citation_count: citations,
-        external_h_index: hIndex,
-        external_metrics_synced_at: syncedAt,
-        updated_at: syncedAt,
-      })
-      .eq("id", userId);
-
-    if (error) {
-      throw error;
+    if (!cleanId) {
+      notify("Add your ORCID iD first.", "info");
+      return;
     }
 
-    setOrcidId(cleanId);
-    setExternalPublicationCount(publications);
-    setExternalCitationCount(citations);
-    setExternalHIndex(hIndex);
-    setExternalMetricsSyncedAt(syncedAt);
+    if (!isValidOrcidId(cleanId)) {
+      notify("Invalid ORCID iD. Example format: 0000-0002-1825-0097", "error");
+      return;
+    }
 
-    alert("Research metrics synced successfully.");
-  } catch (error) {
-    console.log("SYNC EXTERNAL METRICS ERROR:", error);
-    alert(
-      error instanceof Error
-        ? error.message
-        : "Could not sync research metrics.",
-    );
-  } finally {
-    setSyncingMetrics(false);
-  }
-};
+    setSyncingMetrics(true);
+
+    try {
+      // The database asks OpenAlex and saves the numbers itself, so nobody can
+      // type in their own citation count or h-index (audit RG-09).
+      const { data, error } = await supabase.rpc("sync_my_research_metrics", {
+        orcid: cleanId,
+      });
+
+      if (error) {
+        logDev("SYNC EXTERNAL METRICS ERROR:", error);
+        notify(friendlyError(error, "Could not sync research metrics."), "error");
+        return;
+      }
+
+      const synced = ((data || []) as {
+        orcid_id: string | null;
+        publication_count: number | null;
+        citation_count: number | null;
+        h_index: number | null;
+        synced_at: string | null;
+      }[])[0];
+
+      if (!synced) {
+        notify("Could not sync research metrics.", "error");
+        return;
+      }
+
+      setOrcidId(synced.orcid_id || cleanId);
+      setExternalPublicationCount(synced.publication_count ?? 0);
+      setExternalCitationCount(synced.citation_count ?? 0);
+      setExternalHIndex(synced.h_index ?? 0);
+      setExternalMetricsSyncedAt(synced.synced_at ?? "");
+
+      notify("Research metrics synced successfully.", "success");
+    } catch (error) {
+      logDev("SYNC EXTERNAL METRICS ERROR:", error);
+      notify(friendlyError(error, "Could not sync research metrics."), "error");
+    } finally {
+      setSyncingMetrics(false);
+    }
+  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();

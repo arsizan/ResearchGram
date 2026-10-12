@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import WorkspaceClient from "./WorkspaceClient";
+import { privatePage } from "@/lib/site";
+
+export const metadata = privatePage("Workspace");
 
 export default function WorkspacePage() {
   return (

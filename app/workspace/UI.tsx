@@ -5,12 +5,36 @@ import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 import AppNav from "@/components/AppNav";
 import LocalRecorder from "./LocalRecorder";
 import {
-  Plus, X, Check, Upload, Download, Calendar, Clock, Users, Video,
-  FileText, Database, Code, Image as ImageIcon, Folder, Paperclip,
-  CheckSquare, Flag, Activity, Settings, Play, MonitorPlay,
-  ChevronDown, ExternalLink, Trash2, MoreHorizontal,
-  Lock, Globe, RefreshCw, CheckCircle, AlertCircle, ArrowRight,
-  Sparkles, Hash, BarChart2, Layers,
+  Plus,
+  X,
+  Check,
+  Upload,
+  Calendar,
+  Clock,
+  Users,
+  Video,
+  FileText,
+  Database,
+  Code,
+  Image as ImageIcon,
+  Folder,
+  Paperclip,
+  CheckSquare,
+  Flag,
+  Activity,
+  Play,
+  MonitorPlay,
+  ChevronDown,
+  ExternalLink,
+  Trash2,
+  Lock,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
+  ArrowRight,
+  Sparkles,
+  Hash,
+  Layers,
 } from "lucide-react";
 
 // ─── Types (preserved verbatim) ──────────────────────────────────────────────
@@ -333,10 +357,6 @@ function getMemberName(memberId: string | null, members: WorkspaceMember[]) {
   );
 }
 
-function getMemberInitial(member: WorkspaceMember) {
-  return (member.profile?.full_name || member.profile?.email || "R").charAt(0).toUpperCase();
-}
-
 function getProfileName(profile: Profile | null) {
   return profile?.full_name || profile?.email?.split("@")[0] || "Researcher";
 }
@@ -347,7 +367,7 @@ function getInitials(name: string) {
 }
 
 function colorFromString(s: string) {
-  const palette = ["#4f46e5", "#7c3aed", "#0891b2", "#059669", "#dc2626", "#d97706"];
+  const palette = ["#4f46e5", "#7c3aed", "#0e7490", "#047857", "#dc2626", "#b45309"];
   let hash = 0;
   for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) | 0;
   return palette[Math.abs(hash) % palette.length];
@@ -465,11 +485,13 @@ if (loading) {
   return (
     <main className="min-h-screen bg-background pb-24 lg:pb-12">
       <AppNav activePage="workspace" />
+      {/* Page title for screen readers; the design has no visible one (RG-32). */}
+      <h1 className="sr-only">Workspace</h1>
 
       <div className="max-w-[1440px] mx-auto px-4 lg:px-6 py-6">
         <div className="flex flex-col lg:flex-row gap-5">
           {/* ────────────────── LEFT SIDEBAR ───────────────────────────── */}
-          <aside className="lg:w-72 flex-shrink-0 space-y-4">
+          <section aria-label="Your workspaces" className="lg:w-72 flex-shrink-0 space-y-4">
             {/* Create buttons */}
             <div className="bg-card rounded-2xl border border-border shadow-sm p-4 space-y-2">
               <div className="flex items-center justify-between mb-2">
@@ -478,7 +500,9 @@ if (loading) {
                 </p>
                 {showCreateForm && (
                   <button
+                    type="button"
                     onClick={() => setShowCreateForm(false)}
+                    aria-label="Close the new workspace form"
                     className="text-muted-foreground hover:text-foreground"
                   >
                     <X className="w-4 h-4" />
@@ -508,6 +532,8 @@ if (loading) {
                     {(["personal", "shared"] as WorkspaceType[]).map((t) => (
                       <button
                         key={t}
+                        type="button"
+                        aria-pressed={workspaceType === t}
                         onClick={() => setWorkspaceType(t)}
                         className={`px-2 py-2 rounded-lg text-xs font-bold transition-all border ${
                           workspaceType === t
@@ -521,18 +547,21 @@ if (loading) {
                   </div>
 
                   <input
+                    aria-label="Project title"
                     value={workspaceTitle}
                     onChange={(e) => setWorkspaceTitle(e.target.value)}
                     placeholder="Project title"
                     className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
                   />
                   <input
+                    aria-label="Research area"
                     value={workspaceResearchArea}
                     onChange={(e) => setWorkspaceResearchArea(e.target.value)}
                     placeholder="Research area (AI, IoT, NLP…)"
                     className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
                   />
                   <textarea
+                    aria-label="Short description"
                     value={workspaceDescription}
                     onChange={(e) => setWorkspaceDescription(e.target.value)}
                     placeholder="Short description…"
@@ -540,10 +569,11 @@ if (loading) {
                     className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none resize-none transition-all"
                   />
                   <div>
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">
+                    <label htmlFor="workspace-due-date" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">
                       Deadline (optional)
                     </label>
                     <input
+                      id="workspace-due-date"
                       type="date"
                       value={workspaceDueDate}
                       onChange={(e) => setWorkspaceDueDate(e.target.value)}
@@ -620,7 +650,7 @@ if (loading) {
                 Start personal for early drafts, then convert to shared when collaborators join. Local recordings are downloaded to your computer only — metadata stays on ResearchGram.
               </p>
             </div>
-          </aside>
+          </section>
 
           {/* ────────────────── MAIN AREA ──────────────────────────────── */}
           <div className="flex-1 min-w-0 space-y-4">
@@ -711,6 +741,8 @@ if (loading) {
                     {TABS.map(({ value, label, icon: Icon }) => (
                       <button
                         key={value}
+                        type="button"
+                        aria-pressed={activeTab === value}
                         onClick={() => setActiveTab(value)}
                         className={`flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-xl whitespace-nowrap transition-all ${
                           activeTab === value
@@ -902,6 +934,7 @@ if (loading) {
                                       </div>
                                       <div className="relative">
                                         <select
+                                          aria-label={`Status of ${task.title}`}
                                           value={task.status}
                                           onChange={(e) => handleUpdateTaskStatus(task.id, e.target.value)}
                                           className="appearance-none pl-3 pr-7 py-1.5 text-xs font-semibold bg-muted rounded-lg border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -928,12 +961,14 @@ if (loading) {
                         <Plus className="w-4 h-4 text-primary" /> Add Task
                       </h3>
                       <input
+                        aria-label="Task title"
                         value={taskTitle}
                         onChange={(e) => setTaskTitle(e.target.value)}
                         placeholder="Task title"
                         className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
                       />
                       <textarea
+                        aria-label="Task description"
                         value={taskDescription}
                         onChange={(e) => setTaskDescription(e.target.value)}
                         placeholder="Description (optional)"
@@ -943,6 +978,7 @@ if (loading) {
                       <div className="grid grid-cols-2 gap-2">
                         <div className="relative">
                           <select
+                            aria-label="Priority"
                             value={taskPriority}
                             onChange={(e) => setTaskPriority(e.target.value)}
                             className="w-full appearance-none pl-3 pr-7 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -955,6 +991,7 @@ if (loading) {
                         </div>
                         <input
                           type="date"
+                          aria-label="Task due date"
                           value={taskDueDate}
                           onChange={(e) => setTaskDueDate(e.target.value)}
                           className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:outline-none transition-all"
@@ -962,6 +999,7 @@ if (loading) {
                       </div>
                       <div className="relative">
                         <select
+                          aria-label="Assign to"
                           value={taskAssignedTo}
                           onChange={(e) => setTaskAssignedTo(e.target.value)}
                           className="w-full appearance-none pl-3 pr-7 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -1041,6 +1079,7 @@ if (loading) {
                                       </div>
                                       <div className="relative">
                                         <select
+                                          aria-label={`Status of ${m.title}`}
                                           value={m.status}
                                           onChange={(e) => handleUpdateMilestoneStatus(m.id, e.target.value)}
                                           className="appearance-none pl-3 pr-7 py-1.5 text-xs font-semibold bg-muted rounded-lg border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -1067,12 +1106,14 @@ if (loading) {
                         <Plus className="w-4 h-4 text-primary" /> Add Milestone
                       </h3>
                       <input
+                        aria-label="Milestone title"
                         value={milestoneTitle}
                         onChange={(e) => setMilestoneTitle(e.target.value)}
                         placeholder="Milestone title"
                         className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
                       />
                       <textarea
+                        aria-label="Milestone description"
                         value={milestoneDescription}
                         onChange={(e) => setMilestoneDescription(e.target.value)}
                         placeholder="What does completing this milestone mean?"
@@ -1081,6 +1122,7 @@ if (loading) {
                       />
                       <input
                         type="date"
+                        aria-label="Milestone due date"
                         value={milestoneDueDate}
                         onChange={(e) => setMilestoneDueDate(e.target.value)}
                         className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:outline-none transition-all"
@@ -1125,6 +1167,8 @@ if (loading) {
 
                     {/* Drop zone */}
                     <div
+                      role="button"
+                      tabIndex={0}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={(e) => {
                         e.preventDefault();
@@ -1132,6 +1176,12 @@ if (loading) {
                         if (dropped.length > 0) setSelectedFiles(dropped);
                       }}
                       onClick={() => filesInputRef.current?.click()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          filesInputRef.current?.click();
+                        }
+                      }}
                       className="mx-5 mt-4 mb-2 border-2 border-dashed border-border rounded-2xl p-6 text-center hover:border-primary/40 hover:bg-muted/30 transition-all cursor-pointer"
                     >
                       <Upload className="w-6 h-6 mx-auto mb-2 text-muted-foreground" />
@@ -1258,6 +1308,7 @@ if (loading) {
                             <div className="relative flex-1">
                               <select
                                 key={`${selectedWorkspaceId}-${collaboratorOptions.length}`}
+                                aria-label="Collaborator to invite"
                                 value={selectedCollaboratorId}
                                 onChange={(e) => setSelectedCollaboratorId(e.target.value)}
                                 className="w-full appearance-none pl-3 pr-8 py-2.5 text-sm bg-card rounded-xl border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -1410,7 +1461,7 @@ if (loading) {
                                       {formatDateTime(m.starts_at)}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] text-muted-foreground/70 mt-1 break-all font-mono">
+                                  <p className="text-[11px] text-muted-foreground mt-1 break-all font-mono">
                                     {m.meeting_url}
                                   </p>
                                   <div className="flex items-center gap-2 mt-3 flex-wrap">
@@ -1442,19 +1493,21 @@ if (loading) {
                           <Plus className="w-4 h-4 text-primary" /> Create Video Meeting
                         </h3>
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                          Creates a Jitsi room link. Recording downloads locally to the recorder's computer; only metadata stays on ResearchGram.
+                          Creates a Jitsi room link. Recording downloads locally to the recorder&apos;s computer; only metadata stays on ResearchGram.
                         </p>
                         <input
+                          aria-label="Meeting title"
                           value={meetingTitle}
                           onChange={(e) => setMeetingTitle(e.target.value)}
                           placeholder="Meeting title"
                           className="w-full px-3 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
                         />
                         <div>
-                          <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">
+                          <label htmlFor="workspace-meeting-start" className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-1">
                             Start time (optional — leave blank for instant)
                           </label>
                           <input
+                            id="workspace-meeting-start"
                             type="datetime-local"
                             value={meetingStart}
                             onChange={(e) => setMeetingStart(e.target.value)}
@@ -1486,7 +1539,7 @@ if (loading) {
                       <div>
                         <p className="text-sm font-bold text-amber-900">Local-only recording</p>
                         <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                          Actual video files download to the recorder's local computer. ResearchGram stores only metadata — file name, duration, recorder ID, and meeting reference.
+                          Actual video files download to the recorder&apos;s local computer. ResearchGram stores only metadata — file name, duration, recorder ID, and meeting reference.
                         </p>
                       </div>
                     </div>
@@ -1518,7 +1571,7 @@ if (loading) {
                                       {formatDuration(r.duration_seconds)}
                                     </span>
                                   </div>
-                                  <p className="text-[11px] text-muted-foreground/70 mt-1 break-all font-mono">
+                                  <p className="text-[11px] text-muted-foreground mt-1 break-all font-mono">
                                     {r.file_name}
                                   </p>
                                 </div>
@@ -1596,6 +1649,7 @@ if (loading) {
                         Share progress notes, meeting decisions, findings, or next-step plans with the team.
                       </p>
                       <textarea
+                        aria-label="Project update"
                         value={updateText}
                         onChange={(e) => setUpdateText(e.target.value)}
                         placeholder="What's the latest update on this project?"

@@ -1,5 +1,8 @@
 import { Suspense } from "react";
 import MessagesClient from "./MessagesClient";
+import { privatePage } from "@/lib/site";
+
+export const metadata = privatePage("Messages");
 
 export default function MessagesPage() {
   return (

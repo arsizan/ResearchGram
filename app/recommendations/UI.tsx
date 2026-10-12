@@ -1,5 +1,4 @@
 "use client";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 import AppNav from "@/components/AppNav";
 
 export type Profile = {
@@ -39,7 +38,10 @@ export type Recommendation = {
 type RecommendationsUIProps = {
   loading: boolean;
   myPosts: ResearchPost[];
-  profiles: Profile[];
+  /** How many other profiles the database compared with the post. */
+  profileCount: number;
+  /** Results for the selected idea are on their way. */
+  findingMatches?: boolean;
   selectedPostId: string;
   selectedPost: ResearchPost | null;
   recommendations: Recommendation[];
@@ -57,7 +59,8 @@ function formatPostType(value: string | null) {
 export default function RecommendationsUI({
   loading,
   myPosts,
-  profiles,
+  profileCount,
+  findingMatches = false,
   selectedPostId,
   selectedPost,
   recommendations,
@@ -101,7 +104,7 @@ export default function RecommendationsUI({
 
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <div className="rounded-2xl bg-white/10 p-4 ring-1 ring-white/10">
-              <p className="text-2xl font-black">{profiles.length}</p>
+              <p className="text-2xl font-black">{profileCount}</p>
               <p className="text-sm text-blue-100">
                 Researcher profiles scanned
               </p>
@@ -140,11 +143,12 @@ export default function RecommendationsUI({
         ) : (
           <>
             <div className="mt-8 rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
-              <label className="text-sm font-bold text-slate-800">
+              <label htmlFor="recommendations-post" className="text-sm font-bold text-slate-800">
                 Select your research idea
               </label>
 
               <select
+                id="recommendations-post"
                 value={selectedPostId}
                 onChange={(e) => setSelectedPostId(e.target.value)}
                 className="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-800 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-100"
@@ -174,6 +178,12 @@ export default function RecommendationsUI({
               )}
             </div>
 
+            {findingMatches && (
+              <p role="status" className="mt-8 text-sm font-semibold text-slate-600">
+                Finding researchers for this idea…
+              </p>
+            )}
+
             <div className="mt-8 grid gap-5 lg:grid-cols-2">
               {recommendations.map((item, index) => {
                 const profile = item.profile;
@@ -188,9 +198,14 @@ export default function RecommendationsUI({
                     <div className="flex items-start gap-4">
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100">
                         {profile.profile_pic_url ? (
+                          // Avatar from Supabase Storage: a plain <img> so it does not use
+                          // Vercel's image-optimization quota.
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={profile.profile_pic_url}
                             alt={profile.full_name || "Researcher"}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -255,7 +270,7 @@ export default function RecommendationsUI({
 
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <div className="rounded-2xl border border-slate-100 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">
+                        <p className="text-xs font-bold uppercase text-slate-500">
                           Skills
                         </p>
                         <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-700">
@@ -264,7 +279,7 @@ export default function RecommendationsUI({
                       </div>
 
                       <div className="rounded-2xl border border-slate-100 p-4">
-                        <p className="text-xs font-bold uppercase text-slate-400">
+                        <p className="text-xs font-bold uppercase text-slate-500">
                           Interests
                         </p>
                         <p className="mt-1 line-clamp-2 text-sm font-medium text-slate-700">
@@ -274,7 +289,7 @@ export default function RecommendationsUI({
                     </div>
 
                     <div className="mt-5 flex items-center justify-between gap-3">
-                      <p className="text-xs font-semibold text-slate-400">
+                      <p className="text-xs font-semibold text-slate-500">
                         Recommendation #{index + 1}
                       </p>
 

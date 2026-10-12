@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import type { RealtimeChannel } from "@supabase/supabase-js";
 import MessagesUI, {
   type ConversationDivision,
   type ConversationView,
@@ -11,6 +12,8 @@ import MessagesUI, {
   type ProfileLite,
   type TypingUser,
 } from "./UI";
+import { logDev } from "@/lib/log";
+import { friendlyError, notify } from "@/lib/feedback";
 
 type ConversationRow = {
   id: string;
@@ -66,7 +69,9 @@ type ConversationSummaryRow = {
   last_message_created_at: string | null;
 };
 
-function isSupabaseLockError(error: any) {
+function isSupabaseLockError(
+  error: { name?: string; message?: string; details?: string; hint?: string } | null | undefined,
+) {
   const message = `${error?.message || ""} ${error?.details || ""} ${
     error?.hint || ""
   }`;
@@ -122,7 +127,7 @@ export default function MessagesClient() {
 
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
 
-  const typingChannelRef = useRef<any>(null);
+  const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutsRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
@@ -233,7 +238,7 @@ export default function MessagesClient() {
       .select("user_one_id, user_two_id")
       .or(`user_one_id.eq.${currentUserId},user_two_id.eq.${currentUserId}`);
 
-    (connections || []).forEach((item: any) => {
+    ((connections || []) as { user_one_id: string; user_two_id: string }[]).forEach((item) => {
       addPair(item.user_one_id, item.user_two_id);
     });
 
@@ -243,7 +248,7 @@ export default function MessagesClient() {
       .eq("status", "accepted")
       .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
 
-    (profileRequests || []).forEach((item: any) => {
+    ((profileRequests || []) as { requester_id: string; receiver_id: string }[]).forEach((item) => {
       addPair(item.requester_id, item.receiver_id);
     });
 
@@ -253,7 +258,7 @@ export default function MessagesClient() {
       .eq("status", "accepted")
       .or(`requester_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`);
 
-    (researchRequests || []).forEach((item: any) => {
+    ((researchRequests || []) as { requester_id: string; receiver_id: string }[]).forEach((item) => {
       addPair(item.requester_id, item.receiver_id);
     });
 
@@ -270,7 +275,7 @@ export default function MessagesClient() {
       .in("id", ids);
 
     if (error) {
-      console.log("LOAD CONNECTED PROFILES ERROR:", error);
+      logDev("LOAD CONNECTED PROFILES ERROR:", error);
       if (isMountedRef.current) setConnectedProfiles([]);
       return;
     }
@@ -326,7 +331,7 @@ export default function MessagesClient() {
           .eq("user_id", currentUserId);
 
         if (memberError) {
-          console.log("LOAD MY CONVERSATION MEMBERS ERROR:", memberError);
+          logDev("LOAD MY CONVERSATION MEMBERS ERROR:", memberError);
 
           if (isSupabaseLockError(memberError)) {
             // Lock errors happen during React Strict Mode double-mount or rapid
@@ -341,7 +346,7 @@ export default function MessagesClient() {
               }, 600);
             }
           } else {
-            alert(memberError.message);
+            notify(friendlyError(memberError, "Could not load your conversations."), "error");
           }
           return;
         }
@@ -373,8 +378,8 @@ export default function MessagesClient() {
             .order("last_message_at", { ascending: false });
 
         if (conversationError) {
-          console.log("LOAD CONVERSATIONS ERROR:", conversationError);
-          alert(conversationError.message);
+          logDev("LOAD CONVERSATIONS ERROR:", conversationError);
+          notify(friendlyError(conversationError, "Could not load your conversations."), "error");
           return;
         }
 
@@ -400,7 +405,7 @@ export default function MessagesClient() {
           .in("conversation_id", selectedConversationIds);
 
         if (allMemberError) {
-          console.log("LOAD ALL CONVERSATION MEMBERS ERROR:", allMemberError);
+          logDev("LOAD ALL CONVERSATION MEMBERS ERROR:", allMemberError);
         }
 
         const allMembers = (allMemberRows || []) as ConversationMemberRow[];
@@ -418,11 +423,11 @@ export default function MessagesClient() {
             .in("id", allProfileIds);
 
           if (profileError) {
-            console.log("LOAD MESSAGE PROFILES ERROR:", profileError);
+            logDev("LOAD MESSAGE PROFILES ERROR:", profileError);
           }
 
-          (profiles || []).forEach((profile: any) => {
-            profileMap[profile.id] = profile as ProfileLite;
+          ((profiles || []) as ProfileLite[]).forEach((profile) => {
+            profileMap[profile.id] = profile;
           });
         }
 
@@ -442,8 +447,8 @@ export default function MessagesClient() {
             .select("id, title, workspace_type")
             .in("id", workspaceIds);
 
-          (workspaces || []).forEach((workspace: any) => {
-            workspaceMap[workspace.id] = workspace as WorkspaceLite;
+          ((workspaces || []) as WorkspaceLite[]).forEach((workspace) => {
+            workspaceMap[workspace.id] = workspace;
           });
         }
 
@@ -463,8 +468,8 @@ export default function MessagesClient() {
             .select("id, title")
             .in("id", contentIds);
 
-          (contents || []).forEach((content: any) => {
-            contentMap[content.id] = content as ContentLite;
+          ((contents || []) as ContentLite[]).forEach((content) => {
+            contentMap[content.id] = content;
           });
         }
 
@@ -473,7 +478,7 @@ export default function MessagesClient() {
         );
 
         if (summaryError) {
-          console.log("LOAD CONVERSATION SUMMARIES ERROR:", summaryError);
+          logDev("LOAD CONVERSATION SUMMARIES ERROR:", summaryError);
         }
 
         const lastMessageMap: Record<string, MessageRow> = {};
@@ -653,10 +658,10 @@ export default function MessagesClient() {
         selectedConversationIdRef.current === conversationId;
 
       if (error) {
-        console.log("LOAD MESSAGES ERROR:", error);
+        logDev("LOAD MESSAGES ERROR:", error);
 
         if (!isSupabaseLockError(error)) {
-          alert(error.message);
+          notify(friendlyError(error, "Could not load the messages."), "error");
         }
 
         if (isCurrent && !keepMessagesOnError) setMessages([]);
@@ -732,11 +737,11 @@ export default function MessagesClient() {
     await loadConversations(activeUserId, false);
   } catch (error) {
     if (isAuthLockError(error)) {
-      console.log("MESSAGES AUTH LOCK ERROR:", error);
+      logDev("MESSAGES AUTH LOCK ERROR:", error);
       return;
     }
 
-    console.log("MESSAGES LOAD ERROR:", error);
+    logDev("MESSAGES LOAD ERROR:", error);
   } finally {
     if (isMountedRef.current) {
       setLoading(false);
@@ -794,7 +799,7 @@ export default function MessagesClient() {
           table: "messages",
         },
         async (payload) => {
-          const changedRow = (payload.new || payload.old) as any;
+          const changedRow = (payload.new || payload.old) as { conversation_id?: string } | null;
           const currentConversationId = selectedConversationIdRef.current;
 
           if (
@@ -933,7 +938,7 @@ export default function MessagesClient() {
 
   const handleSendMessage = async () => {
     if (!selectedConversationId || !userId) {
-      alert("Select a conversation first.");
+      notify("Select a conversation first.", "info");
       return;
     }
 
@@ -965,8 +970,8 @@ export default function MessagesClient() {
       });
 
       if (error) {
-        console.log("SEND MESSAGE ERROR:", error);
-        alert(error.message);
+        logDev("SEND MESSAGE ERROR:", error);
+        notify(friendlyError(error, "Could not send the message."), "error");
 
         setMessages((prev) =>
           prev.filter((message) => message.id !== tempMessage.id),
@@ -995,7 +1000,7 @@ export default function MessagesClient() {
     if (!userId) return;
 
     if (!selectedDirectUserId) {
-      alert("Select a connected researcher first.");
+      notify("Select a connected researcher first.", "info");
       return;
     }
 
@@ -1036,8 +1041,8 @@ export default function MessagesClient() {
       .single();
 
     if (error || !conversation) {
-      console.log("CREATE DIRECT CONVERSATION ERROR:", error);
-      alert(error?.message || "Could not create direct chat.");
+      logDev("CREATE DIRECT CONVERSATION ERROR:", error);
+      notify(friendlyError(error, "Could not create direct chat."), "error");
       setCreatingDirect(false);
       return;
     }
@@ -1060,8 +1065,8 @@ export default function MessagesClient() {
       ]);
 
     if (memberError) {
-      console.log("CREATE DIRECT MEMBERS ERROR:", memberError);
-      alert(memberError.message);
+      logDev("CREATE DIRECT MEMBERS ERROR:", memberError);
+      notify(friendlyError(memberError, "Could not start the chat."), "error");
       setCreatingDirect(false);
       return;
     }

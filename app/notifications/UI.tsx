@@ -1,6 +1,5 @@
 "use client";
 
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 import AppNav from "@/components/AppNav";
 
 
@@ -141,6 +140,8 @@ export default function NotificationsUI({
 
           <div className="mt-6 flex rounded-2xl bg-gray-50 p-1">
             <button
+              type="button"
+              aria-pressed={filter === "all"}
               onClick={() => setFilter("all")}
               className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 filter === "all"
@@ -152,6 +153,8 @@ export default function NotificationsUI({
             </button>
 
             <button
+              type="button"
+              aria-pressed={filter === "unread"}
               onClick={() => setFilter("unread")}
               className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
                 filter === "unread"
@@ -218,7 +221,7 @@ export default function NotificationsUI({
                       </p>
                     )}
 
-                    <p className="mt-3 text-xs text-gray-400">
+                    <p className="mt-3 text-xs text-gray-600">
                       {formatTime(notification.created_at)}
                     </p>
 

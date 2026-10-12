@@ -310,7 +310,7 @@ export async function POST(request: Request) {
             `${written.droppedCitations} invented citation(s) removed before display`,
           );
           console.warn(
-            `ASSISTANT: dropped ${written.droppedCitations} invalid citation(s) for question: ${question.slice(0, 80)}`,
+            `ASSISTANT: dropped ${written.droppedCitations} invalid citation(s) (question of ${question.length} characters)`,
           );
         }
 

@@ -52,14 +52,14 @@ function PageHeaderSkeleton() {
 function FeedSkeleton() {
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-12 gap-6 px-4 py-6">
-      <aside className="col-span-12 hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3 lg:block">
+      <div className="col-span-12 hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3 lg:block">
         <SkeletonBox className="h-7 w-40" />
         <SkeletonBox className="mt-4 h-4 w-full" />
         <SkeletonBox className="mt-2 h-4 w-4/5" />
         <SkeletonBox className="mt-6 h-28 w-full rounded-3xl" />
         <SkeletonBox className="mt-4 h-12 w-full rounded-2xl" />
         <SkeletonBox className="mt-3 h-12 w-full rounded-2xl" />
-      </aside>
+      </div>
 
       <section className="col-span-12 space-y-5 lg:col-span-6">
         <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -108,12 +108,12 @@ function FeedSkeleton() {
         ))}
       </section>
 
-      <aside className="col-span-12 hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3 lg:block">
+      <div className="col-span-12 hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3 lg:block">
         <SkeletonBox className="h-7 w-32" />
         {[1, 2, 3, 4, 5].map((item) => (
           <SkeletonBox key={item} className="mt-4 h-5 w-3/4 rounded-full" />
         ))}
-      </aside>
+      </div>
     </div>
   );
 }
@@ -220,7 +220,7 @@ function MessagesSkeleton() {
   return (
     <div className="mx-auto max-w-[1440px]" style={{ height: "calc(100vh - 64px)" }}>
       <div className="flex h-full overflow-hidden">
-        <aside className="flex w-full flex-col border-r border-slate-200 bg-white lg:w-[340px]">
+        <div className="flex w-full flex-col border-r border-slate-200 bg-white lg:w-[340px]">
           <div className="border-b border-slate-200 p-4">
             <SkeletonBox className="h-7 w-32" />
             <SkeletonBox className="mt-4 h-10 w-full rounded-2xl" />
@@ -238,7 +238,7 @@ function MessagesSkeleton() {
               </div>
             ))}
           </div>
-        </aside>
+        </div>
 
         <section className="hidden flex-1 flex-col bg-slate-50 lg:flex">
           <div className="border-b border-slate-200 bg-white p-4">
@@ -274,13 +274,13 @@ function WorkspaceSkeleton() {
       <PageHeaderSkeleton />
 
       <div className="mt-5 grid gap-5 lg:grid-cols-12">
-        <aside className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-4">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm lg:col-span-4">
           <SkeletonBox className="h-6 w-44" />
           <SkeletonBox className="mt-4 h-12 w-full rounded-2xl" />
           {[1, 2, 3, 4].map((item) => (
             <SkeletonBox key={item} className="mt-3 h-20 w-full rounded-2xl" />
           ))}
-        </aside>
+        </div>
 
         <section className="space-y-5 lg:col-span-8">
           <div className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
@@ -329,10 +329,10 @@ function ProfileSkeleton() {
           <SkeletonBox className="h-64 rounded-[2rem]" />
         </div>
 
-        <aside className="space-y-5">
+        <div className="space-y-5">
           <SkeletonBox className="h-48 rounded-[2rem]" />
           <SkeletonBox className="h-48 rounded-[2rem]" />
-        </aside>
+        </div>
       </div>
     </section>
   );
@@ -356,8 +356,13 @@ export default function ResearchGramSkeleton({
   variant = "generic",
 }: ResearchGramSkeletonProps) {
   return (
-    <main className="min-h-screen bg-slate-50">
+    <main className="min-h-screen bg-slate-50" aria-busy="true">
       <AppNav activePage={activePage} />
+
+      {/* The grey shapes mean nothing to a screen reader; this does (RG-32). */}
+      <p role="status" className="sr-only">
+        Loading…
+      </p>
 
       {variant === "feed" && <FeedSkeleton />}
       {variant === "network" && <CardsGridSkeleton />}

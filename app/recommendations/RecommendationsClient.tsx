@@ -5,6 +5,9 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { createNotification } from "@/lib/notifications";
+import { friendlyError, notify } from "@/lib/feedback";
+import { logDev } from "@/lib/log";
+import { fetchReadableTexts } from "@/lib/posts/loadPosts";
 import RecommendationsUI, {
   type ExistingRequest,
   type Profile,
@@ -12,164 +15,97 @@ import RecommendationsUI, {
   type ResearchPost,
 } from "./UI";
 
-const STOP_WORDS = new Set([
-  "a",
-  "an",
-  "and",
-  "are",
-  "as",
-  "at",
-  "be",
-  "by",
-  "for",
-  "from",
-  "has",
-  "in",
-  "is",
-  "it",
-  "of",
-  "on",
-  "or",
-  "that",
-  "the",
-  "this",
-  "to",
-  "with",
-  "we",
-  "will",
-  "research",
-  "project",
-  "paper",
-  "study",
-  "work",
-]);
+// Scoring runs in the database (recommend_collaborators, audit RG-06): before,
+// this page downloaded every profile and scored them here. Same rules; the
+// reasons below keep their old wording.
+type RecommendationRow = Profile & {
+  score: number;
+  matched_keywords: string[] | null;
+  skill_keywords: string[] | null;
+  same_department: boolean;
+  detailed_bio: boolean;
+};
 
-function normalizeText(value: string | null | undefined) {
-  return (value || "")
-    .toLowerCase()
-    .replace(/[_/,-]/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function extractKeywords(...values: Array<string | null | undefined>) {
-  const text = values.map(normalizeText).join(" ");
-
-  return Array.from(
-    new Set(
-      text
-        .split(" ")
-        .map((word) => word.trim())
-        .filter((word) => word.length >= 3 && !STOP_WORDS.has(word)),
-    ),
-  );
-}
-
-function getSharedKeywords(postKeywords: string[], profileKeywords: string[]) {
-  const profileSet = new Set(profileKeywords);
-  return postKeywords.filter((keyword) => profileSet.has(keyword));
-}
-
-function calculateRecommendation(
-  post: ResearchPost,
-  candidate: Profile,
-  currentProfile: Profile | null,
-  existingRequest?: ExistingRequest | null,
-): Recommendation {
-  const postKeywords = extractKeywords(
-    post.title,
-    post.content,
-    post.post_type,
-  );
-
-  const candidateKeywords = extractKeywords(
-    candidate.full_name,
-    candidate.department,
-    candidate.skills,
-    candidate.interests,
-    candidate.bio,
-  );
-
-  const matchedKeywords = getSharedKeywords(postKeywords, candidateKeywords);
-
-  let score = 20;
+function toRecommendation(row: RecommendationRow, existingRequest: ExistingRequest | null): Recommendation {
+  const matchedKeywords = row.matched_keywords || [];
+  const skillKeywords = row.skill_keywords || [];
   const reasons: string[] = [];
 
   if (matchedKeywords.length > 0) {
-    score += Math.min(matchedKeywords.length * 12, 45);
-    reasons.push(
-      `Matches research keywords: ${matchedKeywords.slice(0, 5).join(", ")}`,
-    );
+    reasons.push(`Matches research keywords: ${matchedKeywords.slice(0, 5).join(", ")}`);
   }
 
-  const candidateSkills = extractKeywords(candidate.skills);
-  const candidateInterests = extractKeywords(candidate.interests);
-  const postSkillMatches = getSharedKeywords(postKeywords, [
-    ...candidateSkills,
-    ...candidateInterests,
-  ]);
-
-  if (postSkillMatches.length > 0) {
-    score += Math.min(postSkillMatches.length * 10, 25);
-    reasons.push(
-      `Relevant skills/interests: ${postSkillMatches.slice(0, 4).join(", ")}`,
-    );
+  if (skillKeywords.length > 0) {
+    reasons.push(`Relevant skills/interests: ${skillKeywords.slice(0, 4).join(", ")}`);
   }
 
-  const currentDepartment = normalizeText(currentProfile?.department);
-  const candidateDepartment = normalizeText(candidate.department);
-
-  if (
-    currentDepartment &&
-    candidateDepartment &&
-    currentDepartment === candidateDepartment
-  ) {
-    score += 8;
-    reasons.push(`Same department: ${candidate.department}`);
+  if (row.same_department) {
+    reasons.push(`Same department: ${row.department}`);
   }
 
-  if (candidate.bio && candidate.bio.trim().length > 20) {
-    score += 5;
+  if (row.detailed_bio) {
     reasons.push("Has a detailed research profile");
   }
 
-  if (candidate.skills && candidate.skills.trim().length > 0) {
-    score += 5;
-  }
-
-  if (candidate.interests && candidate.interests.trim().length > 0) {
-    score += 5;
-  }
-
   if (reasons.length === 0) {
-    reasons.push(
-      "General researcher profile; add more skills/interests for better matching",
-    );
+    reasons.push("General researcher profile; add more skills/interests for better matching");
   }
 
   return {
-    profile: candidate,
-    score: Math.min(score, 96),
+    profile: {
+      id: row.id,
+      email: row.email,
+      full_name: row.full_name,
+      department: row.department,
+      skills: row.skills,
+      interests: row.interests,
+      bio: row.bio,
+      profile_pic_url: row.profile_pic_url,
+    },
+    score: Number(row.score) || 0,
     reasons,
     matchedKeywords,
     existingRequest,
   };
 }
 
+const NO_ROWS: RecommendationRow[] = [];
+const NO_REQUESTS: ExistingRequest[] = [];
+
 export default function RecommendationsClient() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState("");
-  const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [myPosts, setMyPosts] = useState<ResearchPost[]>([]);
   const [selectedPostId, setSelectedPostId] = useState("");
-  const [profiles, setProfiles] = useState<Profile[]>([]);
-  const [existingRequests, setExistingRequests] = useState<ExistingRequest[]>(
-    [],
-  );
+  const [profileCount, setProfileCount] = useState(0);
+  // Results are kept together with the post they belong to, so switching to
+  // another idea never shows (or sends requests from) the previous idea's list.
+  const [recommendationState, setRecommendationState] = useState<{
+    postId: string;
+    rows: RecommendationRow[];
+  }>({ postId: "", rows: NO_ROWS });
+  const [requestState, setRequestState] = useState<{
+    postId: string;
+    requests: ExistingRequest[];
+  }>({ postId: "", requests: NO_REQUESTS });
   const [requestingId, setRequestingId] = useState<string | null>(null);
+
+  const recommendationRows =
+    recommendationState.postId === selectedPostId ? recommendationState.rows : NO_ROWS;
+  const existingRequests =
+    requestState.postId === selectedPostId ? requestState.requests : NO_REQUESTS;
+  const findingMatches =
+    Boolean(userId && selectedPostId) && recommendationState.postId !== selectedPostId;
+
+  const rememberRequest = (postId: string, request: ExistingRequest) => {
+    setRequestState((prev) => {
+      if (prev.postId !== postId) return prev;
+      if (prev.requests.some((item) => item.id === request.id)) return prev;
+      return { postId, requests: [...prev.requests, request] };
+    });
+  };
 
   const selectedPost = useMemo(
     () => myPosts.find((post) => post.id === selectedPostId) || null,
@@ -186,29 +122,20 @@ export default function RecommendationsClient() {
     return map;
   }, [existingRequests]);
 
-  const recommendations = useMemo(() => {
-    if (!selectedPost) return [];
-
-    return profiles
-      .filter((profile) => profile.id !== userId)
-      .map((profile) =>
-        calculateRecommendation(
-          selectedPost,
-          profile,
-          currentProfile,
-          existingRequestMap.get(profile.id) || null,
-        ),
-      )
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 12);
-  }, [profiles, selectedPost, currentProfile, userId, existingRequestMap]);
+  const recommendations = useMemo(
+    () =>
+      selectedPost
+        ? recommendationRows.map((row) =>
+            toRecommendation(row, existingRequestMap.get(row.id) || null),
+          )
+        : [],
+    [recommendationRows, selectedPost, existingRequestMap],
+  );
 
   useEffect(() => {
   let cancelled = false;
 
   const load = async () => {
-    setLoading(true);
-
     try {
       const authUser = await getCurrentUserSafe();
 
@@ -227,37 +154,28 @@ export default function RecommendationsClient() {
           ? new URLSearchParams(window.location.search).get("postId")
           : null;
 
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select(
-          "id, email, full_name, department, skills, interests, bio, profile_pic_url",
-        )
-        .eq("id", activeUserId)
-        .single();
-
-      if (profileError) {
-        console.log("CURRENT PROFILE ERROR:", profileError);
-      }
-
-      if (cancelled) return;
-
-      setCurrentProfile((profileData as Profile) || null);
-
       const { data: postData, error: postError } = await supabase
         .from("contents")
-        .select("id, user_id, title, content, post_type, created_at")
+        .select("id, user_id, title, post_type, created_at")
         .eq("user_id", activeUserId)
         .order("created_at", { ascending: false });
 
       if (postError) {
-        console.log("MY POSTS ERROR:", postError);
-        alert(postError.message);
+        logDev("MY POSTS ERROR:", postError);
+        notify(friendlyError(postError, "Could not load your posts."), "error");
         return;
       }
 
+      const postRows = (postData || []) as Omit<ResearchPost, "content">[];
+      // If the texts cannot be loaded, the titles still show.
+      const texts = (await fetchReadableTexts(postRows.map((post) => post.id))) ?? {};
+
       if (cancelled) return;
 
-      const safePosts = (postData || []) as ResearchPost[];
+      const safePosts: ResearchPost[] = postRows.map((post) => ({
+        ...post,
+        content: texts[post.id] ?? null,
+      }));
       setMyPosts(safePosts);
 
       if (safePosts.length > 0) {
@@ -268,29 +186,26 @@ export default function RecommendationsClient() {
         setSelectedPostId(matchingPost?.id || safePosts[0].id);
       }
 
-      const { data: allProfiles, error: allProfilesError } = await supabase
+      // Only the number of profiles is needed here; matching happens in the database.
+      const { count: otherProfileCount, error: countError } = await supabase
         .from("profiles")
-        .select(
-          "id, email, full_name, department, skills, interests, bio, profile_pic_url",
-        )
+        .select("id", { count: "exact", head: true })
         .neq("id", activeUserId);
 
-      if (allProfilesError) {
-        console.log("ALL PROFILES ERROR:", allProfilesError);
-        alert(allProfilesError.message);
-        return;
+      if (countError) {
+        logDev("PROFILE COUNT ERROR:", countError);
       }
 
       if (cancelled) return;
 
-      setProfiles((allProfiles || []) as Profile[]);
+      setProfileCount(otherProfileCount || 0);
     } catch (error) {
       if (isAuthLockError(error)) {
-        console.log("RECOMMENDATIONS AUTH LOCK ERROR:", error);
+        logDev("RECOMMENDATIONS AUTH LOCK ERROR:", error);
         return;
       }
 
-      console.log("RECOMMENDATIONS LOAD ERROR:", error);
+      logDev("RECOMMENDATIONS LOAD ERROR:", error);
     } finally {
       if (!cancelled) {
         setLoading(false);
@@ -306,53 +221,89 @@ export default function RecommendationsClient() {
 }, [router]);
 
   useEffect(() => {
-    const loadRequests = async () => {
-      if (!userId || !selectedPostId) {
-        setExistingRequests([]);
-        return;
+    if (!userId || !selectedPostId) return;
+
+    let cancelled = false;
+    const postId = selectedPostId;
+
+    const loadRecommendations = async () => {
+      const { data, error } = await supabase.rpc("recommend_collaborators", {
+        post_id: postId,
+        max_results: 12,
+      });
+
+      if (cancelled) return;
+
+      if (error) {
+        logDev("RECOMMENDATIONS ERROR:", error);
+        notify(friendlyError(error, "Could not load recommendations."), "error");
       }
 
+      setRecommendationState({ postId, rows: (data || []) as RecommendationRow[] });
+    };
+
+    loadRecommendations();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, selectedPostId]);
+
+  useEffect(() => {
+    if (!userId || !selectedPostId) return;
+
+    let cancelled = false;
+    const postId = selectedPostId;
+
+    const loadRequests = async () => {
       const { data, error } = await supabase
         .from("research_requests")
         .select("id, receiver_id, status")
-        .eq("content_id", selectedPostId)
+        .eq("content_id", postId)
         .eq("requester_id", userId)
         .eq("request_type", "collaboration");
 
+      if (cancelled) return;
+
       if (error) {
-        console.log("REQUEST LOAD ERROR:", error);
+        logDev("REQUEST LOAD ERROR:", error);
         return;
       }
 
-      setExistingRequests((data || []) as ExistingRequest[]);
+      setRequestState({ postId, requests: (data || []) as ExistingRequest[] });
     };
 
     loadRequests();
+
+    return () => {
+      cancelled = true;
+    };
   }, [userId, selectedPostId]);
 
 const handleSendCollaborationRequest = async (receiver: Profile) => {
   if (!selectedPost) {
-    alert("Select a research idea first.");
+    notify("Select a research idea first.", "info");
     return;
   }
 
   if (!userId) {
-    alert("You must be logged in.");
+    notify("Log in to send collaboration requests.", "error");
     return;
   }
 
   if (receiver.id === userId) {
-    alert("You cannot send a request to yourself.");
+    notify("You cannot send a request to yourself.", "info");
     return;
   }
 
   const existing = existingRequestMap.get(receiver.id);
 
   if (existing) {
-    alert(
+    notify(
       existing.status === "pending"
         ? "You already sent a request to this researcher."
         : `You already have a ${existing.status} request with this researcher.`,
+      "info",
     );
     return;
   }
@@ -375,24 +326,19 @@ const handleSendCollaborationRequest = async (receiver: Profile) => {
     .maybeSingle();
 
   if (existingCheckError) {
-    console.log("CHECK EXISTING RECOMMENDATION REQUEST ERROR:", existingCheckError);
+    logDev("CHECK EXISTING RECOMMENDATION REQUEST ERROR:", existingCheckError);
   }
 
   if (alreadyExists) {
-    setExistingRequests((prev) => {
-      const existsInState = prev.some((item) => item.id === alreadyExists.id);
-
-      if (existsInState) return prev;
-
-      return [...prev, alreadyExists as ExistingRequest];
-    });
+    rememberRequest(selectedPost.id, alreadyExists as ExistingRequest);
 
     setRequestingId(null);
 
-    alert(
+    notify(
       alreadyExists.status === "pending"
         ? "You already sent a request to this researcher."
         : `You already have a ${alreadyExists.status} request with this researcher.`,
+      "info",
     );
 
     return;
@@ -412,12 +358,12 @@ const handleSendCollaborationRequest = async (receiver: Profile) => {
     .single();
 
   if (error) {
-    console.log("SEND REQUEST ERROR:", error);
+    logDev("SEND REQUEST ERROR:", error);
 
     if (error.code === "23505") {
-      alert("You already sent a request to this researcher for this post.");
+      notify("You already sent a request to this researcher for this post.", "info");
     } else {
-      alert(error.message);
+      notify(friendlyError(error, "Could not send the request."), "error");
     }
 
     setRequestingId(null);
@@ -436,23 +382,21 @@ const handleSendCollaborationRequest = async (receiver: Profile) => {
     requestKind: "research",
   });
 
-  setExistingRequests((prev) => [
-    ...prev,
-    insertedRequest as ExistingRequest,
-  ]);
+  if (insertedRequest) rememberRequest(selectedPost.id, insertedRequest as ExistingRequest);
 
   setRequestingId(null);
-  alert("Collaboration request sent.");
+  notify("Collaboration request sent.", "success");
 };
 
   return (
     <RecommendationsUI
       loading={loading}
       myPosts={myPosts}
-      profiles={profiles}
+      profileCount={profileCount}
       selectedPostId={selectedPostId}
       selectedPost={selectedPost}
       recommendations={recommendations}
+      findingMatches={findingMatches}
       requestingId={requestingId}
       setSelectedPostId={setSelectedPostId}
       handleSendCollaborationRequest={handleSendCollaborationRequest}

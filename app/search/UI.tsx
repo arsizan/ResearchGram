@@ -1,7 +1,6 @@
 "use client";
 
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 
 export type ProfileSearchResult = {
   id: string;
@@ -99,9 +98,14 @@ function ProfileAvatar({
       className={`${sizeClass} shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100`}
     >
       {profile.profile_pic_url ? (
+        // Avatar from Supabase Storage: a plain <img> so it does not use
+        // Vercel's image-optimization quota.
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={profile.profile_pic_url}
           alt={displayName(profile)}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
         />
       ) : (
@@ -242,7 +246,7 @@ function ContentCard({
           {formatLabel(content.post_type)}
         </span>
 
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-gray-500">
           {formatTime(content.created_at)}
         </span>
       </div>
@@ -311,6 +315,8 @@ export default function SearchUI({
 
           <div className="mt-6 flex flex-col gap-3 md:flex-row">
             <input
+              aria-label="Search ResearchGram"
+              enterKeyHint="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
@@ -330,7 +336,7 @@ export default function SearchUI({
 
           {recentSearches.length > 0 && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <span className="px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-400">
+              <span className="px-2 py-1 text-xs font-bold uppercase tracking-wide text-gray-500">
                 Recent:
               </span>
 
@@ -350,7 +356,7 @@ export default function SearchUI({
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-12">
-          <aside className="space-y-4 lg:col-span-4">
+          <section aria-label="Smart suggestions" className="space-y-4 lg:col-span-4">
             <div className="rounded-3xl bg-white p-5 shadow-sm">
               <h2 className="text-xl font-bold text-gray-950">
                 Smart Suggestions
@@ -377,7 +383,7 @@ export default function SearchUI({
                 />
               ))
             )}
-          </aside>
+          </section>
 
           <section className="space-y-6 lg:col-span-8">
             {loading ? (

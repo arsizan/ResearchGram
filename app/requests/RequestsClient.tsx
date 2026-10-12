@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -11,6 +11,36 @@ import RequestsUI, {
   type RequestStatus,
   type UnifiedRequestView,
 } from "./UI";
+import { logDev } from "@/lib/log";
+import { friendlyError, notify } from "@/lib/feedback";
+
+// Rows as loaded below.
+type ResearchRequestRow = {
+  id: string;
+  content_id: string | null;
+  requester_id: string;
+  receiver_id: string;
+  request_type: string | null;
+  message: string | null;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+type ProfileRequestRow = Omit<ResearchRequestRow, "content_id">;
+
+type PaperAccessRequestRow = {
+  id: string;
+  content_id: string;
+  requester_id: string;
+  owner_id: string;
+  reason: string | null;
+  status: string;
+  created_at: string | null;
+  updated_at: string | null;
+  approved_at: string | null;
+  rejected_at: string | null;
+};
 
 function sortByNewest(requests: UnifiedRequestView[]) {
   return [...requests].sort((a, b) => {
@@ -45,8 +75,6 @@ export default function RequestsClient() {
   const [sentRequests, setSentRequests] = useState<UnifiedRequestView[]>([]);
 
 const loadRequests = async () => {
-  setLoading(true);
-
   try {
     const authUser = await getCurrentUserSafe();
 
@@ -110,69 +138,69 @@ const loadRequests = async () => {
     ]);
 
     if (researchReceivedResult.error) {
-      console.log(
+      logDev(
         "FETCH RECEIVED RESEARCH REQUESTS ERROR:",
         researchReceivedResult.error,
       );
     }
 
     if (researchSentResult.error) {
-      console.log(
+      logDev(
         "FETCH SENT RESEARCH REQUESTS ERROR:",
         researchSentResult.error,
       );
     }
 
     if (profileReceivedResult.error) {
-      console.log(
+      logDev(
         "FETCH RECEIVED PROFILE REQUESTS ERROR:",
         profileReceivedResult.error,
       );
     }
 
     if (profileSentResult.error) {
-      console.log(
+      logDev(
         "FETCH SENT PROFILE REQUESTS ERROR:",
         profileSentResult.error,
       );
     }
 
     if (paperReceivedResult.error) {
-      console.log(
+      logDev(
         "FETCH RECEIVED PAPER ACCESS REQUESTS ERROR:",
         paperReceivedResult.error,
       );
     }
 
     if (paperSentResult.error) {
-      console.log(
+      logDev(
         "FETCH SENT PAPER ACCESS REQUESTS ERROR:",
         paperSentResult.error,
       );
     }
 
-    const researchReceived = researchReceivedResult.data || [];
-    const researchSent = researchSentResult.data || [];
-    const profileReceived = profileReceivedResult.data || [];
-    const profileSent = profileSentResult.data || [];
-    const paperReceived = paperReceivedResult.data || [];
-    const paperSent = paperSentResult.data || [];
+    const researchReceived = (researchReceivedResult.data || []) as ResearchRequestRow[];
+    const researchSent = (researchSentResult.data || []) as ResearchRequestRow[];
+    const profileReceived = (profileReceivedResult.data || []) as ProfileRequestRow[];
+    const profileSent = (profileSentResult.data || []) as ProfileRequestRow[];
+    const paperReceived = (paperReceivedResult.data || []) as PaperAccessRequestRow[];
+    const paperSent = (paperSentResult.data || []) as PaperAccessRequestRow[];
 
     const profileIds = new Set<string>();
     const contentIds = new Set<string>();
 
-    [...researchReceived, ...researchSent].forEach((request: any) => {
+    [...researchReceived, ...researchSent].forEach((request) => {
       if (request.requester_id) profileIds.add(request.requester_id);
       if (request.receiver_id) profileIds.add(request.receiver_id);
       if (request.content_id) contentIds.add(request.content_id);
     });
 
-    [...profileReceived, ...profileSent].forEach((request: any) => {
+    [...profileReceived, ...profileSent].forEach((request) => {
       if (request.requester_id) profileIds.add(request.requester_id);
       if (request.receiver_id) profileIds.add(request.receiver_id);
     });
 
-    [...paperReceived, ...paperSent].forEach((request: any) => {
+    [...paperReceived, ...paperSent].forEach((request) => {
       if (request.requester_id) profileIds.add(request.requester_id);
       if (request.owner_id) profileIds.add(request.owner_id);
       if (request.content_id) contentIds.add(request.content_id);
@@ -188,11 +216,11 @@ const loadRequests = async () => {
         .in("id", Array.from(profileIds));
 
       if (profileError) {
-        console.log("FETCH REQUEST PROFILES ERROR:", profileError);
+        logDev("FETCH REQUEST PROFILES ERROR:", profileError);
       }
 
-      (profiles || []).forEach((profile: any) => {
-        profileMap[profile.id] = profile as Profile;
+      ((profiles || []) as Profile[]).forEach((profile) => {
+        profileMap[profile.id] = profile;
       });
     }
 
@@ -200,21 +228,21 @@ const loadRequests = async () => {
       const { data: contents, error: contentError } = await supabase
         .from("contents")
         .select(
-          "id, user_id, title, content, abstract, post_type, content_category, visibility_mode, full_paper_access_mode, allow_full_paper_request, created_at",
+          "id, user_id, title, abstract, post_type, content_category, visibility_mode, full_paper_access_mode, allow_full_paper_request, created_at",
         )
         .in("id", Array.from(contentIds));
 
       if (contentError) {
-        console.log("FETCH REQUEST CONTENTS ERROR:", contentError);
+        logDev("FETCH REQUEST CONTENTS ERROR:", contentError);
       }
 
-      (contents || []).forEach((content: any) => {
-        contentMap[content.id] = content as ContentPost;
+      ((contents || []) as ContentPost[]).forEach((content) => {
+        contentMap[content.id] = content;
       });
     }
 
     const normalizedReceived: UnifiedRequestView[] = [
-      ...researchReceived.map((request: any) => ({
+      ...researchReceived.map((request) => ({
         id: request.id,
         kind: "research" as const,
         direction: "received" as const,
@@ -230,10 +258,10 @@ const loadRequests = async () => {
         otherProfile: profileMap[request.requester_id] || null,
         requesterProfile: profileMap[request.requester_id] || null,
         receiverProfile: profileMap[request.receiver_id] || null,
-        contentPost: contentMap[request.content_id] || null,
+        contentPost: (request.content_id && contentMap[request.content_id]) || null,
       })),
 
-      ...profileReceived.map((request: any) => ({
+      ...profileReceived.map((request) => ({
         id: request.id,
         kind: "profile" as const,
         direction: "received" as const,
@@ -252,7 +280,7 @@ const loadRequests = async () => {
         contentPost: null,
       })),
 
-      ...paperReceived.map((request: any) => ({
+      ...paperReceived.map((request) => ({
         id: request.id,
         kind: "paper_access" as const,
         direction: "received" as const,
@@ -268,12 +296,12 @@ const loadRequests = async () => {
         otherProfile: profileMap[request.requester_id] || null,
         requesterProfile: profileMap[request.requester_id] || null,
         receiverProfile: profileMap[request.owner_id] || null,
-        contentPost: contentMap[request.content_id] || null,
+        contentPost: (request.content_id && contentMap[request.content_id]) || null,
       })),
     ];
 
     const normalizedSent: UnifiedRequestView[] = [
-      ...researchSent.map((request: any) => ({
+      ...researchSent.map((request) => ({
         id: request.id,
         kind: "research" as const,
         direction: "sent" as const,
@@ -289,10 +317,10 @@ const loadRequests = async () => {
         otherProfile: profileMap[request.receiver_id] || null,
         requesterProfile: profileMap[request.requester_id] || null,
         receiverProfile: profileMap[request.receiver_id] || null,
-        contentPost: contentMap[request.content_id] || null,
+        contentPost: (request.content_id && contentMap[request.content_id]) || null,
       })),
 
-      ...profileSent.map((request: any) => ({
+      ...profileSent.map((request) => ({
         id: request.id,
         kind: "profile" as const,
         direction: "sent" as const,
@@ -311,7 +339,7 @@ const loadRequests = async () => {
         contentPost: null,
       })),
 
-      ...paperSent.map((request: any) => ({
+      ...paperSent.map((request) => ({
         id: request.id,
         kind: "paper_access" as const,
         direction: "sent" as const,
@@ -327,7 +355,7 @@ const loadRequests = async () => {
         otherProfile: profileMap[request.owner_id] || null,
         requesterProfile: profileMap[request.requester_id] || null,
         receiverProfile: profileMap[request.owner_id] || null,
-        contentPost: contentMap[request.content_id] || null,
+        contentPost: (request.content_id && contentMap[request.content_id]) || null,
       })),
     ];
 
@@ -335,18 +363,22 @@ const loadRequests = async () => {
     setSentRequests(sortByNewest(normalizedSent));
   } catch (error) {
     if (isAuthLockError(error)) {
-      console.log("REQUESTS AUTH LOCK ERROR:", error);
+      logDev("REQUESTS AUTH LOCK ERROR:", error);
       return;
     }
 
-    console.log("REQUESTS LOAD ERROR:", error);
+    logDev("REQUESTS LOAD ERROR:", error);
   } finally {
     setLoading(false);
   }
 };
 
-  useEffect(() => {
+  const loadRequestsOnMount = useEffectEvent(() => {
     loadRequests();
+  });
+
+  useEffect(() => {
+    loadRequestsOnMount();
   }, []);
 
   const ensureResearchConversation = async (request: UnifiedRequestView) => {
@@ -366,7 +398,7 @@ const loadRequests = async () => {
       .maybeSingle();
 
     if (existingError) {
-      console.log("CHECK CONVERSATION ERROR:", existingError);
+      logDev("CHECK CONVERSATION ERROR:", existingError);
     }
 
     // Both people need a member row: the Messages page lists conversations by
@@ -395,7 +427,7 @@ const loadRequests = async () => {
         );
 
       if (memberError) {
-        console.log("ADD CONVERSATION MEMBERS ERROR:", memberError);
+        logDev("ADD CONVERSATION MEMBERS ERROR:", memberError);
       }
     };
 
@@ -419,8 +451,8 @@ const loadRequests = async () => {
       .single();
 
     if (insertError || !insertedConversation) {
-      console.log("CREATE CONVERSATION ERROR:", insertError);
-      alert(insertError?.message || "Could not open the conversation.");
+      logDev("CREATE CONVERSATION ERROR:", insertError);
+      notify(friendlyError(insertError, "Could not open the conversation."), "error");
       return null;
     }
 
@@ -445,8 +477,8 @@ const loadRequests = async () => {
         .eq("id", request.id);
 
       if (error) {
-        console.log("UPDATE RESEARCH REQUEST ERROR:", error);
-        alert(error.message);
+        logDev("UPDATE RESEARCH REQUEST ERROR:", error);
+        notify(friendlyError(error, "Could not update the request."), "error");
         setUpdatingId(null);
         return;
       }
@@ -486,8 +518,8 @@ const loadRequests = async () => {
         .eq("id", request.id);
 
       if (error) {
-        console.log("UPDATE PROFILE REQUEST ERROR:", error);
-        alert(error.message);
+        logDev("UPDATE PROFILE REQUEST ERROR:", error);
+        notify(friendlyError(error, "Could not update the request."), "error");
         setUpdatingId(null);
         return;
       }
@@ -512,8 +544,8 @@ const loadRequests = async () => {
           );
 
         if (connectionError) {
-          console.log("CREATE CONNECTION ERROR:", connectionError);
-          alert(connectionError.message);
+          logDev("CREATE CONNECTION ERROR:", connectionError);
+          notify(friendlyError(connectionError, "Could not add the connection."), "error");
           setUpdatingId(null);
           return;
         }
@@ -563,8 +595,8 @@ const loadRequests = async () => {
         .eq("id", request.id);
 
       if (error) {
-        console.log("UPDATE PAPER ACCESS REQUEST ERROR:", error);
-        alert(error.message);
+        logDev("UPDATE PAPER ACCESS REQUEST ERROR:", error);
+        notify(friendlyError(error, "Could not update the request."), "error");
         setUpdatingId(null);
         return;
       }

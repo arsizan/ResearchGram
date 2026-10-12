@@ -1,11 +1,11 @@
 import { Suspense } from "react";
 import DiscoverClient from "./DiscoverClient";
+import { privatePage } from "@/lib/site";
 
-export const metadata = {
-  title: "Discover research · ResearchGram",
-  description:
-    "Search the published literature with citations, journal metrics and open-access links.",
-};
+export const metadata = privatePage(
+  "Discover research",
+  "Search the published literature with citations, journal metrics and open-access links.",
+);
 
 export default function DiscoverPage() {
   return (

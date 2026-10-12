@@ -96,10 +96,10 @@ function colorFromString(value: string) {
   const palette = [
     "#4f46e5",
     "#7c3aed",
-    "#0891b2",
-    "#059669",
+    "#0e7490",
+    "#047857",
     "#dc2626",
-    "#d97706",
+    "#b45309",
   ];
 
   let hash = 0;
@@ -126,9 +126,14 @@ function Avatar({
       <div
         className={`${sizeClass} shrink-0 overflow-hidden rounded-2xl bg-slate-100 ring-4 ring-white`}
       >
+        {/* Avatar from Supabase Storage: a plain <img> so it does not use
+            Vercel's image-optimization quota. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={profile.profile_pic_url}
           alt={name}
+          loading="lazy"
+          decoding="async"
           className="h-full w-full object-cover"
         />
       </div>
@@ -245,7 +250,7 @@ function NetworkCard({
                 {profile?.department || "Research community"}
               </p>
 
-              <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-400">
+              <p className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-500">
                 <CalendarDays className="h-3.5 w-3.5" />
                 Connected since {formatTime(item.connection.created_at)}
               </p>
@@ -308,13 +313,13 @@ function NetworkCard({
           </p>
 
           {profile?.email && (
-            <p className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-400">
+            <p className="mt-1 flex items-center gap-2 text-xs font-medium text-slate-500">
               <Mail className="h-3.5 w-3.5" />
               <span className="truncate">{profile.email}</span>
             </p>
           )}
 
-          <p className="mt-3 flex items-center gap-1.5 text-xs font-bold text-slate-400">
+          <p className="mt-3 flex items-center gap-1.5 text-xs font-bold text-slate-500">
             <CalendarDays className="h-3.5 w-3.5" />
             Connected since {formatTime(item.connection.created_at)}
           </p>
@@ -329,7 +334,7 @@ function NetworkCard({
           <div className="mt-4">
             <div className="mb-2 flex items-center gap-2">
               <Tags className="h-3.5 w-3.5 text-indigo-500" />
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                 Skills
               </p>
             </div>
@@ -346,7 +351,7 @@ function NetworkCard({
           <div className="mt-4">
             <div className="mb-2 flex items-center gap-2">
               <Sparkles className="h-3.5 w-3.5 text-emerald-500" />
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-400">
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-slate-500">
                 Research Interests
               </p>
             </div>
@@ -482,6 +487,7 @@ export default function NetworkUI({
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
               <input
+                aria-label="Search your network"
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search by name, department, skill, or interest..."
@@ -492,7 +498,7 @@ export default function NetworkUI({
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
                   aria-label="Clear search"
                 >
                   <X className="h-4 w-4" />

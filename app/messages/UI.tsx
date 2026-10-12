@@ -2,12 +2,21 @@
 
 
 import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import AppNav from "@/components/AppNav";
 import {
-  Search, Send, MessageSquare, ChevronLeft, MoreHorizontal,
-  Video, ExternalLink, Plus, X, Mic, FileText, Building2,
-  Users, Hash, ChevronDown,
+  Search,
+  Send,
+  MessageSquare,
+  ChevronLeft,
+  MoreHorizontal,
+  Plus,
+  X,
+  Mic,
+  FileText,
+  Building2,
+  Hash,
+  ChevronDown,
 } from "lucide-react";
 
 // ─── Types (preserved verbatim) ──────────────────────────────────────────────
@@ -209,7 +218,7 @@ function getInitials(name: string) {
 }
 
 function colorFromString(s: string) {
-  const palette = ["#4f46e5", "#7c3aed", "#0891b2", "#059669", "#dc2626", "#d97706"];
+  const palette = ["#4f46e5", "#7c3aed", "#0e7490", "#047857", "#dc2626", "#b45309"];
   let hash = 0;
   for (let i = 0; i < s.length; i++) hash = (hash * 31 + s.charCodeAt(i)) | 0;
   return palette[Math.abs(hash) % palette.length];
@@ -288,7 +297,7 @@ function Avatar({
 function GroupTile({
   initial, type, count,
 }: { initial: string; type: ConversationDivision; count?: number }) {
-  const color = type === "collaboration" ? "#7c3aed" : type === "workspace_group" ? "#0891b2" : "#4f46e5";
+  const color = type === "collaboration" ? "#7c3aed" : type === "workspace_group" ? "#0e7490" : "#4f46e5";
   return (
     <div className="relative flex-shrink-0">
       <div
@@ -339,7 +348,14 @@ export default function MessagesUI({
 }: MessagesUIProps) {
   const [search, setSearch] = useState("");
   const [showNewChat, setShowNewChat] = useState(false);
-  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(Boolean(selectedConversationId));
+  // On a phone, choosing a chat opens it (set while rendering instead of in an
+  // effect, so there is no extra render).
+  const [chatShownFor, setChatShownFor] = useState(selectedConversationId);
+  if (chatShownFor !== selectedConversationId) {
+    setChatShownFor(selectedConversationId);
+    if (selectedConversationId) setMobileChatOpen(true);
+  }
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
@@ -452,10 +468,6 @@ export default function MessagesUI({
     typingUsers.length,
   ]);
 
-  // ── Reflect selection on mobile ─────────────────────────────────────────
-  useEffect(() => {
-    if (selectedConversationId) setMobileChatOpen(true);
-  }, [selectedConversationId]);
 
 // ── Build date-grouped message stream ───────────────────────────────────
 type StreamItem =
@@ -511,7 +523,6 @@ const messageStream: StreamItem[] = useMemo(() => {
   const other = getOtherMember(selectedConversation, userId);
   const isDirect = selectedConversation?.conversation_type === "direct";
   const isCollab = selectedConversation?.conversation_type === "collaboration";
-  const isWorkspace = selectedConversation?.conversation_type === "workspace_group";
 
   const headerTitle = (() => {
     if (!selectedConversation) return "";
@@ -535,6 +546,8 @@ const messageStream: StreamItem[] = useMemo(() => {
   return (
     <main className="min-h-screen bg-background">
       <AppNav activePage="messages" />
+      {/* Page title for screen readers; the design has no visible one (RG-32). */}
+      <h1 className="sr-only">Messages</h1>
 
       <div className="max-w-[1440px] mx-auto" style={{ height: "calc(100vh - 60px)" }}>
         <div className="flex h-full overflow-hidden">
@@ -569,6 +582,8 @@ const messageStream: StreamItem[] = useMemo(() => {
                 {DIVISIONS.map((d) => (
                   <button
                     key={d.value}
+                    type="button"
+                    aria-pressed={activeDivision === d.value}
                     onClick={() => setActiveDivision(d.value)}
                     className={`relative flex-1 py-1.5 text-[11px] font-semibold rounded-lg transition-all whitespace-nowrap ${
                       activeDivision === d.value
@@ -578,7 +593,7 @@ const messageStream: StreamItem[] = useMemo(() => {
                   >
                     {d.label === "Collaborations" ? "Collab" : d.label === "Workspaces" ? "Workspaces" : "Direct"}
                     {divisionUnread[d.value] > 0 && (
-                      <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold align-middle">
+                      <span className="ml-1 inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-red-600 text-white text-[9px] font-bold align-middle">
                         {divisionUnread[d.value] > 99 ? "99+" : divisionUnread[d.value]}
                       </span>
                     )}
@@ -591,6 +606,7 @@ const messageStream: StreamItem[] = useMemo(() => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 <input
                   type="text"
+                  aria-label={`Search ${typeLabel(activeDivision).toLowerCase()} conversations`}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={`Search ${typeLabel(activeDivision).toLowerCase()} conversations…`}
@@ -606,6 +622,7 @@ const messageStream: StreamItem[] = useMemo(() => {
                   </p>
                   <div className="relative">
                     <select
+                      aria-label="Researcher to message"
                       value={selectedDirectUserId}
                       onChange={(e) => setSelectedDirectUserId(e.target.value)}
                       className="w-full appearance-none pl-3 pr-8 py-2 text-sm bg-white rounded-lg border border-border focus:border-primary focus:outline-none cursor-pointer"
@@ -669,7 +686,14 @@ const messageStream: StreamItem[] = useMemo(() => {
                   return (
                     <button
                       key={conv.id}
-                      onClick={() => handleSelectConversation(conv.id)}
+                      type="button"
+                      aria-current={isActive ? "true" : undefined}
+                      onClick={() => {
+                        handleSelectConversation(conv.id);
+                        // On phones, tapping the chat that was open before
+                        // Back must open it again (the selection does not change).
+                        setMobileChatOpen(true);
+                      }}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors border-l-2 ${
                         isActive
                           ? "bg-accent border-primary"
@@ -754,7 +778,9 @@ const messageStream: StreamItem[] = useMemo(() => {
                 <div className="flex items-center gap-3 px-4 py-3 bg-card border-b border-border flex-shrink-0">
                   {/* Mobile back */}
                   <button
+                    type="button"
                     onClick={() => setMobileChatOpen(false)}
+                    aria-label="Back to conversations"
                     className="lg:hidden p-1.5 rounded-xl hover:bg-muted transition-colors mr-1 text-muted-foreground"
                   >
                     <ChevronLeft className="w-5 h-5" />
@@ -803,7 +829,11 @@ const messageStream: StreamItem[] = useMemo(() => {
                         <span className="hidden sm:inline">Open Workspace</span>
                       </button>
                     )}
-                    <button className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hidden sm:block">
+                    <button
+                      type="button"
+                      aria-label="More options"
+                      className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hidden sm:block"
+                    >
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                   </div>
@@ -939,6 +969,7 @@ const messageStream: StreamItem[] = useMemo(() => {
 
                     <div className="flex-1 relative">
                       <textarea
+                        aria-label="Message"
                         value={messageText}
                         onChange={(e) => handleChangeMessageText(e.target.value)}
                         onKeyDown={(e) => {
@@ -974,7 +1005,7 @@ const messageStream: StreamItem[] = useMemo(() => {
                       )}
                     </button>
                   </div>
-                  <p className="text-[10px] text-muted-foreground/60 mt-1.5 px-2 hidden sm:block">
+                  <p className="text-[10px] text-muted-foreground mt-1.5 px-2 hidden sm:block">
                     Enter to send · Shift+Enter for new line
                   </p>
                 </div>

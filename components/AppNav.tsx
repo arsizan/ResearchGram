@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import NotificationBell from "@/components/NotificationBell";
+import BrandLogo from "@/components/BrandLogo";
 import {
   Search,
   Home,
@@ -13,9 +15,9 @@ import {
   UserPlus,
   MessageSquare,
   User,
-  BookOpen,
   GitBranch,
 } from "lucide-react";
+import { logDev } from "@/lib/log";
 
 type ActivePage =
   | "feed"
@@ -71,11 +73,11 @@ export default function AppNav({ activePage }: AppNavProps) {
       ]);
 
     if (researchResult.error)
-      console.log("NAV RESEARCH REQUEST COUNT ERROR:", researchResult.error);
+      logDev("NAV RESEARCH REQUEST COUNT ERROR:", researchResult.error);
     if (profileResult.error)
-      console.log("NAV PROFILE REQUEST COUNT ERROR:", profileResult.error);
+      logDev("NAV PROFILE REQUEST COUNT ERROR:", profileResult.error);
     if (paperAccessResult.error)
-      console.log(
+      logDev(
         "NAV PAPER ACCESS REQUEST COUNT ERROR:",
         paperAccessResult.error,
       );
@@ -94,7 +96,7 @@ export default function AppNav({ activePage }: AppNavProps) {
     );
 
     if (unreadError) {
-      console.log("NAV UNREAD MESSAGE COUNT ERROR:", unreadError);
+      logDev("NAV UNREAD MESSAGE COUNT ERROR:", unreadError);
       setUnreadMessageCount(0);
       return;
     }
@@ -137,7 +139,7 @@ useEffect(() => {
         loadProfile(currentUserId),
       ]);
     } catch (error) {
-      console.log("APP NAV USER DATA ERROR:", error);
+      logDev("APP NAV USER DATA ERROR:", error);
     }
   };
 
@@ -165,9 +167,9 @@ useEffect(() => {
       if (!mounted) return;
 
       if (isAuthLockError(error)) {
-        console.log("APP NAV AUTH LOCK ERROR:", error);
+        logDev("APP NAV AUTH LOCK ERROR:", error);
       } else {
-        console.log("APP NAV AUTH ERROR:", error);
+        logDev("APP NAV AUTH ERROR:", error);
       }
     }
 
@@ -318,37 +320,42 @@ useEffect(() => {
 
   const routeFor = (id: ActivePage) => (id === "feed" ? "/feed" : `/${id}`);
 
+  // What the red count means, for screen readers ("Requests, 3 pending").
+  const badgeText = (id: ActivePage, count: number) =>
+    `, ${count} ${id === "messages" ? "unread" : "pending"}`;
+
   return (
     <>
-      <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-border shadow-sm">
+      <nav aria-label="Main" className="sticky top-0 z-50 bg-white/95 backdrop-blur border-b border-border shadow-sm">
         <div
           className="max-w-[1440px] mx-auto px-4 lg:px-6 flex items-center gap-3 lg:gap-4"
           style={{ height: 60 }}
         >
-        {/* Logo */}
-<button
-  onClick={() => router.push("/feed")}
-  className="flex items-center gap-2.5 flex-shrink-0"
->
-  <img
-    src="/logos/researchgram-rg-logo.png"
-    alt="ResearchGram logo"
-    className="h-9 w-9 object-contain"
-  />
+          {/* Logo. A link (not a button) so it can be opened in a new tab; the
+              label names it on phones, where the text next to it is hidden. */}
+          <Link
+            href="/feed"
+            aria-label="ResearchGram home"
+            className="flex items-center gap-2.5 flex-shrink-0"
+          >
+            <BrandLogo size={36} className="h-9 w-9" eager />
 
-  <span className="font-extrabold text-lg tracking-tight text-foreground hidden sm:block">
-    Research<span className="text-primary">Gram</span>
-  </span>
-</button>
+            <span className="font-extrabold text-lg tracking-tight text-foreground hidden sm:block">
+              Research<span className="text-primary">Gram</span>
+            </span>
+          </Link>
 
           {/* Search */}
           <form
+            role="search"
             onSubmit={handleGlobalSearch}
             className="flex-1 max-w-sm relative"
           >
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+            <Search aria-hidden="true" className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
             <input
               type="text"
+              aria-label="Search researchers and papers"
+              enterKeyHint="search"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               placeholder="Search researchers, papers…"
@@ -361,23 +368,27 @@ useEffect(() => {
             {nav.map(({ id, label, icon: Icon, badge }) => {
               const active = activePage === id;
               return (
-                <button
+                <Link
                   key={id}
-                  onClick={() => router.push(routeFor(id))}
+                  href={routeFor(id)}
+                  aria-current={active ? "page" : undefined}
                   className={`relative flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-[11px] font-semibold tracking-wide transition-all ${
                     active
                       ? "text-primary bg-accent"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted"
                   }`}
                 >
-                  <Icon className="w-5 h-5" />
+                  <Icon aria-hidden="true" className="w-5 h-5" />
                   {label}
                   {badge && badge > 0 ? (
-                    <span className="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">
-                      {badge > 99 ? "99+" : badge}
-                    </span>
+                    <>
+                      <span aria-hidden="true" className="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">
+                        {badge > 99 ? "99+" : badge}
+                      </span>
+                      <span className="sr-only">{badgeText(id, badge)}</span>
+                    </>
                   ) : null}
-                </button>
+                </Link>
               );
             })}
           </div>
@@ -393,48 +404,56 @@ useEffect(() => {
               Logout
             </button>
 
-            <button
-              onClick={() => router.push("/profile")}
+            <Link
+              href="/profile"
+              aria-label="Your profile"
               className="w-9 h-9 rounded-full overflow-hidden hover:ring-2 hover:ring-primary hover:ring-offset-1 transition-all flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
               style={{ backgroundColor: "#4f46e5" }}
             >
               {profilePicUrl ? (
+                // Avatar from Supabase Storage: a plain <img> so it does not use
+                // Vercel's image-optimization quota.
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={profilePicUrl}
-                  alt="Profile"
+                  alt=""
                   className="w-full h-full object-cover"
                 />
               ) : (
-                userInitials
+                <span aria-hidden="true">{userInitials}</span>
               )}
-            </button>
+            </Link>
           </div>
         </div>
       </nav>
 
-      {/* Mobile bottom nav */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-border">
+      {/* Mobile bottom nav. Narrow side padding so all seven items fit on a
+          360px-wide phone; before, Messages and Profile were pushed off screen. */}
+      <nav aria-label="Pages" className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-border">
         <div
           className="flex items-center justify-around px-2 py-1"
           style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
         >
           {nav.map(({ id, label, icon: Icon, badge }) => (
-            <button
+            <Link
               key={id}
-              onClick={() => router.push(routeFor(id))}
-              className={`relative flex flex-col items-center gap-0.5 px-3 py-2 rounded-xl transition-all ${
+              href={routeFor(id)}
+              aria-current={activePage === id ? "page" : undefined}
+              className={`relative flex min-w-0 flex-col items-center gap-0.5 px-[3px] py-2 rounded-xl transition-all ${
                 activePage === id ? "text-primary" : "text-muted-foreground"
               }`}
             >
-              <Icon className="w-5 h-5" />
-              <span className="text-[10px] font-semibold">{label}</span>
+              <Icon aria-hidden="true" className="w-5 h-5" />
+              <span className="max-w-full truncate text-[10px] font-semibold">{label}</span>
               {badge && badge > 0 ? (
-                <span className="absolute top-1 right-2 min-w-[16px] h-[16px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">
-                  {badge > 99 ? "99+" : badge}
-                </span>
+                <>
+                  <span aria-hidden="true" className="absolute top-1 left-1/2 ml-1 min-w-[16px] h-[16px] px-1 rounded-full bg-red-600 text-white text-[9px] font-bold flex items-center justify-center">
+                    {badge > 99 ? "99+" : badge}
+                  </span>
+                  <span className="sr-only">{badgeText(id, badge)}</span>
+                </>
               ) : null}
-            </button>
+            </Link>
           ))}
         </div>
       </nav>

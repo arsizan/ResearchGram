@@ -1,4 +1,5 @@
 import { supabase } from "@/lib/supabase";
+import { logDev } from "@/lib/log";
 
 /**
  * A notification's link is written by another user's browser, so it is only
@@ -71,7 +72,7 @@ export async function createNotification({
   });
 
   if (error) {
-    console.log("CREATE NOTIFICATION ERROR:", error);
+    logDev("CREATE NOTIFICATION ERROR:", error);
   }
 
   return { error };

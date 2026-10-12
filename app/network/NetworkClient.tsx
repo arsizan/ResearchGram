@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -9,6 +9,8 @@ import NetworkUI, {
   type Profile,
   type UserConnection,
 } from "./UI";
+import { logDev } from "@/lib/log";
+import { friendlyError, notify } from "@/lib/feedback";
 
 export default function NetworkClient() {
   const router = useRouter();
@@ -23,20 +25,18 @@ export default function NetworkClient() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const loadNetwork = async () => {
-    setLoading(true);
-
    let authUser = null;
 
 try {
   authUser = await getCurrentUserSafe();
 } catch (error) {
   if (isAuthLockError(error)) {
-    console.log("NETWORK AUTH LOCK ERROR:", error);
+    logDev("NETWORK AUTH LOCK ERROR:", error);
     setLoading(false);
     return;
   }
 
-  console.log("NETWORK AUTH ERROR:", error);
+  logDev("NETWORK AUTH ERROR:", error);
   setLoading(false);
   return;
 }
@@ -56,7 +56,7 @@ const userId = authUser.id;
       .order("created_at", { ascending: false });
 
     if (connectionError) {
-      console.log("FETCH NETWORK CONNECTIONS ERROR:", connectionError);
+      logDev("FETCH NETWORK CONNECTIONS ERROR:", connectionError);
       setConnections([]);
       setLoading(false);
       return;
@@ -88,7 +88,7 @@ const userId = authUser.id;
       .in("id", otherUserIds);
 
     if (profilesError) {
-      console.log("FETCH NETWORK PROFILES ERROR:", profilesError);
+      logDev("FETCH NETWORK PROFILES ERROR:", profilesError);
     }
 
     const profileMap = (profilesData || []).reduce(
@@ -115,8 +115,12 @@ const userId = authUser.id;
     setLoading(false);
   };
 
-  useEffect(() => {
+  const loadNetworkOnMount = useEffectEvent(() => {
     loadNetwork();
+  });
+
+  useEffect(() => {
+    loadNetworkOnMount();
   }, []);
 
   const filteredConnections = useMemo(() => {
@@ -145,12 +149,12 @@ const userId = authUser.id;
 
   const handleStartDirectMessage = async (targetUserId: string) => {
     if (!currentUserId) {
-      alert("You must be logged in to send messages.");
+      notify("You must be logged in to send messages.", "error");
       return;
     }
 
     if (targetUserId === currentUserId) {
-      alert("You cannot message yourself.");
+      notify("You cannot message yourself.", "error");
       return;
     }
 
@@ -168,8 +172,8 @@ const userId = authUser.id;
       .maybeSingle();
 
     if (existingError) {
-      console.log("CHECK DIRECT CONVERSATION ERROR:", existingError);
-      alert(existingError.message);
+      logDev("CHECK DIRECT CONVERSATION ERROR:", existingError);
+      notify(friendlyError(existingError, "Could not open the chat."), "error");
       setStartingConversationId(null);
       return;
     }
@@ -206,8 +210,8 @@ const userId = authUser.id;
       .single();
 
     if (createError || !newConversation) {
-      console.log("CREATE DIRECT CONVERSATION ERROR:", createError);
-      alert(createError?.message || "Could not start conversation.");
+      logDev("CREATE DIRECT CONVERSATION ERROR:", createError);
+      notify(friendlyError(createError, "Could not start conversation."), "error");
       setStartingConversationId(null);
       return;
     }
@@ -233,8 +237,8 @@ const userId = authUser.id;
       ]);
 
     if (memberError) {
-      console.log("CREATE DIRECT CONVERSATION MEMBERS ERROR:", memberError);
-      alert(memberError.message);
+      logDev("CREATE DIRECT CONVERSATION MEMBERS ERROR:", memberError);
+      notify(friendlyError(memberError, "Could not start the chat."), "error");
       setStartingConversationId(null);
       return;
     }

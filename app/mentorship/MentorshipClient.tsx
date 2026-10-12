@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { friendlyError, notify } from "@/lib/feedback";
+import { logDev } from "@/lib/log";
 import MentorshipUI, {
   type ExistingMentorshipRequest,
   type MentorRecommendation,
@@ -168,6 +170,7 @@ export default function MentorshipClient() {
 
   const [currentProfile, setCurrentProfile] = useState<Profile | null>(null);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [profileCount, setProfileCount] = useState(0);
   const [existingRequests, setExistingRequests] = useState<
     ExistingMentorshipRequest[]
   >([]);
@@ -243,8 +246,6 @@ export default function MentorshipClient() {
   }, [mentorCandidates, currentProfile, searchQuery, existingRequestMap]);
 
 const loadPage = async () => {
-  setLoading(true);
-
   try {
     const authUser = await getCurrentUserSafe();
 
@@ -265,7 +266,7 @@ const loadPage = async () => {
       .single();
 
     if (myProfileError) {
-      console.log("MY PROFILE ERROR:", myProfileError);
+      logDev("MY PROFILE ERROR:", myProfileError);
     }
 
     const safeProfile = (myProfileData || null) as Profile | null;
@@ -279,20 +280,34 @@ const loadPage = async () => {
       setMyMentorshipAvailable(Boolean(safeProfile.mentorship_available));
     }
 
-    const { data: profilesData, error: profilesError } = await supabase
-      .from("profiles")
-      .select(
-        "id, email, full_name, department, skills, interests, bio, profile_pic_url, user_role, academic_level, expertise, mentorship_available, office_hours",
-      )
-      .neq("id", activeUserId);
+    // Only possible mentors are loaded (audit RG-06): people who offer
+    // mentorship, faculty and alumni. Before, every profile was downloaded and
+    // filtered here. The total is counted in the database.
+    const [mentorResult, countResult] = await Promise.all([
+      supabase
+        .from("profiles")
+        .select(
+          "id, email, full_name, department, skills, interests, bio, profile_pic_url, user_role, academic_level, expertise, mentorship_available, office_hours",
+        )
+        .neq("id", activeUserId)
+        .or("mentorship_available.eq.true,user_role.in.(faculty,alumni)")
+        .order("profile_completion_score", { ascending: false, nullsFirst: false })
+        .limit(500),
+      supabase
+        .from("profiles")
+        .select("id", { count: "exact", head: true })
+        .neq("id", activeUserId),
+    ]);
 
-    if (profilesError) {
-      console.log("MENTOR PROFILES ERROR:", profilesError);
-      alert(profilesError.message);
+    if (mentorResult.error) {
+      logDev("MENTOR PROFILES ERROR:", mentorResult.error);
+      notify(friendlyError(mentorResult.error, "Could not load mentors."), "error");
       setProfiles([]);
     } else {
-      setProfiles((profilesData || []) as Profile[]);
+      setProfiles((mentorResult.data || []) as Profile[]);
     }
+
+    setProfileCount(countResult.count || 0);
 
     const { data: requestData, error: requestError } = await supabase
       .from("profile_requests")
@@ -301,29 +316,33 @@ const loadPage = async () => {
       .eq("request_type", "mentorship");
 
     if (requestError) {
-      console.log("MENTORSHIP REQUESTS ERROR:", requestError);
+      logDev("MENTORSHIP REQUESTS ERROR:", requestError);
     }
 
     setExistingRequests((requestData || []) as ExistingMentorshipRequest[]);
   } catch (error) {
     if (isAuthLockError(error)) {
-      console.log("MENTORSHIP AUTH LOCK ERROR:", error);
+      logDev("MENTORSHIP AUTH LOCK ERROR:", error);
       return;
     }
 
-    console.log("MENTORSHIP LOAD ERROR:", error);
+    logDev("MENTORSHIP LOAD ERROR:", error);
   } finally {
     setLoading(false);
   }
 };
 
-  useEffect(() => {
+  const loadPageOnMount = useEffectEvent(() => {
     loadPage();
+  });
+
+  useEffect(() => {
+    loadPageOnMount();
   }, []);
 
   const handleSaveMentorProfile = async () => {
     if (!userId) {
-      alert("You must be logged in.");
+      notify("You must be logged in.", "error");
       return;
     }
 
@@ -341,27 +360,27 @@ const loadPage = async () => {
       .eq("id", userId);
 
     if (error) {
-      console.log("SAVE MENTOR PROFILE ERROR:", error);
-      alert(error.message);
+      logDev("SAVE MENTOR PROFILE ERROR:", error);
+      notify(friendlyError(error, "Could not save your mentorship profile."), "error");
       setSavingProfile(false);
       return;
     }
 
     await loadPage();
     setSavingProfile(false);
-    alert("Mentorship profile updated.");
+    notify("Mentorship profile updated.", "success");
   };
 
   const handleSendMentorshipRequest = async (mentor: Profile) => {
     if (!userId) {
-      alert("You must be logged in.");
+      notify("You must be logged in.", "error");
       return;
     }
 
     const existing = existingRequestMap.get(mentor.id);
 
     if (existing) {
-      alert(`Mentorship request already ${existing.status}.`);
+      notify(`Mentorship request already ${existing.status}.`, "info");
       return;
     }
 
@@ -382,8 +401,8 @@ const loadPage = async () => {
     });
 
     if (error) {
-      console.log("SEND MENTORSHIP REQUEST ERROR:", error);
-      alert(error.message);
+      logDev("SEND MENTORSHIP REQUEST ERROR:", error);
+      notify(friendlyError(error, "Could not send the mentorship request."), "error");
       setRequestingId(null);
       return;
     }
@@ -396,13 +415,14 @@ const loadPage = async () => {
 
     setExistingRequests((data || []) as ExistingMentorshipRequest[]);
     setRequestingId(null);
-    alert("Mentorship request sent.");
+    notify("Mentorship request sent.", "success");
   };
 
   return (
     <MentorshipUI
       loading={loading}
       profiles={profiles}
+      profileCount={profileCount}
       existingRequests={existingRequests}
       mentorCandidates={mentorCandidates}
       mentorRecommendations={mentorRecommendations}

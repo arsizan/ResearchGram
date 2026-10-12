@@ -6,6 +6,7 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { supabase } from "@/lib/supabase";
 import type { SearchResult } from "@/lib/scholar/types";
 import DiscoverUI from "./UI";
+import { logDev } from "@/lib/log";
 
 export default function DiscoverClient() {
   const router = useRouter();
@@ -36,7 +37,7 @@ export default function DiscoverClient() {
         }
       } catch (error) {
         if (isAuthLockError(error)) return;
-        console.error("DISCOVER AUTH ERROR:", error);
+        logDev("DISCOVER AUTH ERROR:", error);
       } finally {
         if (isMountedRef.current) setCheckingAuth(false);
       }

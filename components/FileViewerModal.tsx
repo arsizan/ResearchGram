@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export type ViewerFile = {
   id: string;
@@ -52,15 +52,20 @@ export default function FileViewerModal({
   onChangeIndex,
 }: FileViewerModalProps) {
   const [zoom, setZoom] = useState(1);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
 
   const file = files[currentIndex] || null;
 
   const canGoPrevious = currentIndex > 0;
   const canGoNext = currentIndex < files.length - 1;
 
-  useEffect(() => {
+  // Each file opens at 100%.
+  const viewKey = `${open ? "open" : "closed"}:${currentIndex}`;
+  const [zoomFor, setZoomFor] = useState(viewKey);
+  if (zoomFor !== viewKey) {
+    setZoomFor(viewKey);
     setZoom(1);
-  }, [currentIndex, open]);
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -91,6 +96,17 @@ export default function FileViewerModal({
     onChangeIndex,
   ]);
 
+  // Focus moves into the viewer when it opens, and back to whatever opened
+  // it when it closes (RG-32).
+  useEffect(() => {
+    if (!open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeButtonRef.current?.focus();
+    return () => {
+      opener?.focus();
+    };
+  }, [open]);
+
   const viewerTitle = useMemo(() => {
     if (!file) return "File viewer";
     return file.name || "Research file";
@@ -102,7 +118,12 @@ export default function FileViewerModal({
   const pdfFile = isPdfFile(file);
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black/90 text-white">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={viewerTitle}
+      className="fixed inset-0 m-0 z-[100] bg-black/90 text-white"
+    >
       <div className="flex h-full flex-col">
         <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div className="min-w-0">
@@ -117,18 +138,22 @@ export default function FileViewerModal({
             {imageFile && (
               <>
                 <button
+                  type="button"
                   onClick={() => setZoom((current) => Math.max(0.5, current - 0.25))}
+                  aria-label="Zoom out"
                   className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold transition hover:bg-white/20"
                 >
                   −
                 </button>
 
-                <span className="w-14 text-center text-sm font-semibold">
+                <span aria-live="polite" className="w-14 text-center text-sm font-semibold">
                   {Math.round(zoom * 100)}%
                 </span>
 
                 <button
+                  type="button"
                   onClick={() => setZoom((current) => Math.min(3, current + 0.25))}
+                  aria-label="Zoom in"
                   className="rounded-full bg-white/10 px-3 py-2 text-sm font-semibold transition hover:bg-white/20"
                 >
                   +
@@ -147,6 +172,8 @@ export default function FileViewerModal({
             </a>
 
             <button
+              ref={closeButtonRef}
+              type="button"
               onClick={onClose}
               className="rounded-full bg-white/10 px-4 py-2 text-sm font-semibold transition hover:bg-white/20"
             >
@@ -155,10 +182,12 @@ export default function FileViewerModal({
           </div>
         </header>
 
-        <main className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
+        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-auto p-4">
           {canGoPrevious && (
             <button
+              type="button"
               onClick={() => onChangeIndex(currentIndex - 1)}
+              aria-label="Previous file"
               className="absolute left-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-2xl font-bold transition hover:bg-white/20"
             >
               ‹
@@ -167,7 +196,9 @@ export default function FileViewerModal({
 
           {canGoNext && (
             <button
+              type="button"
               onClick={() => onChangeIndex(currentIndex + 1)}
+              aria-label="Next file"
               className="absolute right-4 top-1/2 z-10 -translate-y-1/2 rounded-full bg-white/10 px-4 py-3 text-2xl font-bold transition hover:bg-white/20"
             >
               ›
@@ -175,6 +206,9 @@ export default function FileViewerModal({
           )}
 
           {imageFile ? (
+            // An uploaded file shown at full size from Supabase Storage (often a
+            // short-lived signed link); next/image cannot resize or cache those.
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={file.url}
               alt={file.name}
@@ -212,7 +246,7 @@ export default function FileViewerModal({
               </a>
             </div>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );

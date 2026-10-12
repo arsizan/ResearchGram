@@ -352,7 +352,8 @@ export async function searchWorks(
       // fail the same way twice and the user waits twice as long for it.
       if (!(error instanceof OpenAlexError) || error.status !== 400) throw error;
 
-      console.warn(`OPENALEX 400 for search="${term}" — retrying narrower`);
+      // The search text itself is the user's; it is not written to the server log (RG-28).
+      console.warn(`OPENALEX 400 for a search of ${term.length} characters — retrying narrower`);
     }
   }
 

@@ -3,6 +3,8 @@
 import { useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { Video, Square, AlertCircle, Download, Circle } from "lucide-react";
+import { logDev } from "@/lib/log";
+import { notify } from "@/lib/feedback";
 
 type Meeting = {
   id: string;
@@ -61,7 +63,7 @@ export default function LocalRecorder({
 
   const handleStartRecording = async () => {
     if (!navigator.mediaDevices?.getDisplayMedia) {
-      alert("Screen/tab recording is not supported in this browser.");
+      notify("Screen/tab recording is not supported in this browser.", "info");
       return;
     }
 
@@ -113,10 +115,10 @@ export default function LocalRecorder({
         });
 
         if (error) {
-          console.log("SAVE RECORDING METADATA ERROR:", error);
-          alert(
-            "Video downloaded, but recording metadata could not be saved: " +
-              error.message,
+          logDev("SAVE RECORDING METADATA ERROR:", error);
+          notify(
+            "The video was saved to this computer, but it could not be added to the workspace's list of recordings.",
+            "error",
           );
         } else {
           onSaved();
@@ -141,10 +143,8 @@ export default function LocalRecorder({
       recorder.start(1000);
       setRecording(true);
     } catch (error) {
-      console.log("START LOCAL RECORDING ERROR:", error);
-      alert(
-        "Recording was cancelled or failed. Please allow screen/tab recording permission.",
-      );
+      logDev("START LOCAL RECORDING ERROR:", error);
+      notify("Recording was cancelled or failed. Please allow screen/tab recording permission.", "error");
     }
   };
 
@@ -172,7 +172,7 @@ export default function LocalRecorder({
             <button
               onClick={handleStartRecording}
               disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-500 text-white text-xs font-bold hover:bg-red-600 transition-colors disabled:opacity-40 flex-shrink-0"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 transition-colors disabled:opacity-40 flex-shrink-0"
             >
               {saving ? (
                 <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />

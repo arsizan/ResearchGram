@@ -1,5 +1,4 @@
 "use client";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 type OnboardingUIProps = {
   loading: boolean;
   saving: boolean;
@@ -45,15 +44,18 @@ type OnboardingUIProps = {
 
 function FieldLabel({
   children,
+  htmlFor,
   required = false,
 }: {
   children: string;
+  /** id of the field this label names (RG-32). */
+  htmlFor: string;
   required?: boolean;
 }) {
   return (
-    <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-500">
+    <label htmlFor={htmlFor} className="mb-1 block text-xs font-bold uppercase tracking-wide text-gray-500">
       {children}
-      {required && <span className="text-red-500"> *</span>}
+      {required && <span className="text-red-500" aria-hidden="true"> *</span>}
     </label>
   );
 }
@@ -120,7 +122,7 @@ export default function OnboardingUI({
                 alumni, mentors, collaborators, papers, and workspaces for you.
               </p>
 
-              <p className="mt-2 text-xs text-gray-400">{email}</p>
+              <p className="mt-2 text-xs text-gray-500">{email}</p>
             </div>
 
             <div className="rounded-3xl bg-blue-50 p-5 text-center">
@@ -151,8 +153,10 @@ export default function OnboardingUI({
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <div>
-                  <FieldLabel required>Full Name</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-full-name" required>Full Name</FieldLabel>
                   <input
+                    id="onboarding-full-name"
+                    aria-required="true"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                     placeholder="Your full name"
@@ -161,8 +165,10 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel required>Department</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-department" required>Department</FieldLabel>
                   <input
+                    id="onboarding-department"
+                    aria-required="true"
                     value={department}
                     onChange={(e) => setDepartment(e.target.value)}
                     placeholder="Computer Science and Engineering"
@@ -171,8 +177,10 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel required>User Type</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-user-role" required>User Type</FieldLabel>
                   <select
+                    id="onboarding-user-role"
+                    aria-required="true"
                     value={userRole}
                     onChange={(e) => setUserRole(e.target.value)}
                     className="w-full rounded-2xl border border-gray-200 p-4 text-gray-900 outline-none focus:border-blue-500"
@@ -184,8 +192,10 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel required>Academic Level</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-academic-level" required>Academic Level</FieldLabel>
                   <input
+                    id="onboarding-academic-level"
+                    aria-required="true"
                     value={academicLevel}
                     onChange={(e) => setAcademicLevel(e.target.value)}
                     placeholder="BSc, MSc, PhD, Lecturer, Professor..."
@@ -196,8 +206,10 @@ export default function OnboardingUI({
                 {userRole === "student" && (
                   <>
                     <div>
-                      <FieldLabel required>Batch</FieldLabel>
+                      <FieldLabel htmlFor="onboarding-batch" required>Batch</FieldLabel>
                       <input
+                        id="onboarding-batch"
+                        aria-required="true"
                         value={batch}
                         onChange={(e) => setBatch(e.target.value)}
                         placeholder="Example: 15th Batch"
@@ -206,8 +218,10 @@ export default function OnboardingUI({
                     </div>
 
                     <div>
-                      <FieldLabel required>Session</FieldLabel>
+                      <FieldLabel htmlFor="onboarding-session" required>Session</FieldLabel>
                       <input
+                        id="onboarding-session"
+                        aria-required="true"
                         value={session}
                         onChange={(e) => setSession(e.target.value)}
                         placeholder="Example: 2020-21"
@@ -220,8 +234,10 @@ export default function OnboardingUI({
                 {userRole === "alumni" && (
                   <>
                     <div>
-                      <FieldLabel required>Graduation Year</FieldLabel>
+                      <FieldLabel htmlFor="onboarding-graduation-year" required>Graduation Year</FieldLabel>
                       <input
+                        id="onboarding-graduation-year"
+                        aria-required="true"
                         value={graduationYear}
                         onChange={(e) => setGraduationYear(e.target.value)}
                         placeholder="Example: 2022"
@@ -231,8 +247,10 @@ export default function OnboardingUI({
                     </div>
 
                     <div>
-                      <FieldLabel required>Current Position</FieldLabel>
+                      <FieldLabel htmlFor="onboarding-current-position" required>Current Position</FieldLabel>
                       <input
+                        id="onboarding-current-position"
+                        aria-required="true"
                         value={currentPosition}
                         onChange={(e) => setCurrentPosition(e.target.value)}
                         placeholder="Software Engineer, Researcher..."
@@ -244,10 +262,12 @@ export default function OnboardingUI({
 
                 {(userRole === "alumni" || userRole === "faculty") && (
                   <div className="md:col-span-2">
-                    <FieldLabel required>
+                    <FieldLabel htmlFor="onboarding-company-or-institution" required>
                       Company / Institution
                     </FieldLabel>
                     <input
+                      id="onboarding-company-or-institution"
+                      aria-required="true"
                       value={companyOrInstitution}
                       onChange={(e) =>
                         setCompanyOrInstitution(e.target.value)
@@ -267,8 +287,10 @@ export default function OnboardingUI({
 
               <div className="mt-5 space-y-4">
                 <div>
-                  <FieldLabel required>Skills</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-skills" required>Skills</FieldLabel>
                   <input
+                    id="onboarding-skills"
+                    aria-required="true"
                     value={skills}
                     onChange={(e) => setSkills(e.target.value)}
                     placeholder="Python, Machine Learning, React, Data Mining"
@@ -277,8 +299,10 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel required>Research Interests</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-interests" required>Research Interests</FieldLabel>
                   <input
+                    id="onboarding-interests"
+                    aria-required="true"
                     value={interests}
                     onChange={(e) => setInterests(e.target.value)}
                     placeholder="AI, NLP, IoT, Cybersecurity, Bioinformatics"
@@ -287,8 +311,9 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel>Research Area</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-research-area">Research Area</FieldLabel>
                   <input
+                    id="onboarding-research-area"
                     value={researchArea}
                     onChange={(e) => setResearchArea(e.target.value)}
                     placeholder="Artificial Intelligence and Natural Language Processing"
@@ -297,8 +322,9 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel>Expertise</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-expertise">Expertise</FieldLabel>
                   <input
+                    id="onboarding-expertise"
                     value={expertise}
                     onChange={(e) => setExpertise(e.target.value)}
                     placeholder="Deep Learning, LLMs, Data Analysis..."
@@ -307,8 +333,9 @@ export default function OnboardingUI({
                 </div>
 
                 <div>
-                  <FieldLabel>Bio</FieldLabel>
+                  <FieldLabel htmlFor="onboarding-bio">Bio</FieldLabel>
                   <textarea
+                    id="onboarding-bio"
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
                     placeholder="Write a short academic introduction..."
@@ -319,7 +346,7 @@ export default function OnboardingUI({
             </div>
           </section>
 
-          <aside className="space-y-6">
+          <section aria-label="Mentorship settings" className="space-y-6">
             <div className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold text-gray-950">
                 Mentorship
@@ -342,8 +369,9 @@ export default function OnboardingUI({
               </label>
 
               <div className="mt-4">
-                <FieldLabel>Office Hours</FieldLabel>
+                <FieldLabel htmlFor="onboarding-office-hours">Office Hours</FieldLabel>
                 <input
+                  id="onboarding-office-hours"
                   value={officeHours}
                   onChange={(e) => setOfficeHours(e.target.value)}
                   placeholder="Example: Friday 8 PM - 10 PM"
@@ -371,7 +399,7 @@ export default function OnboardingUI({
             >
               {saving ? "Saving..." : "Save and Continue"}
             </button>
-          </aside>
+          </section>
         </div>
       </section>
     </main>

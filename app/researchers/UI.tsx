@@ -1,7 +1,6 @@
 "use client";
 
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 export type ResearcherProfile = {
   id: string;
   email: string | null;
@@ -27,6 +26,10 @@ type ResearchersUIProps = {
   filteredProfiles: ResearcherProfile[];
   connectionStatusMap: Record<string, ConnectionStatus>;
   connectingId: string | null;
+  /** "Load more" (audit RG-06): the list comes 30 at a time. */
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  handleLoadMore?: () => void;
 
   setSearchQuery: (value: string) => void;
   handleSendConnectionRequest: (receiverId: string) => void;
@@ -51,6 +54,9 @@ export default function ResearchersUI({
   filteredProfiles,
   connectionStatusMap,
   connectingId,
+  hasMore = false,
+  loadingMore = false,
+  handleLoadMore,
   setSearchQuery,
   handleSendConnectionRequest,
   handleGoToProfile,
@@ -84,9 +90,11 @@ export default function ResearchersUI({
 
             <div className="w-full lg:max-w-md">
               <input
+                type="search"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, department, AI, NLP, Java..."
+                aria-label="Search researchers"
                 className="w-full rounded-2xl border border-gray-200 px-4 py-3 text-sm text-gray-900 outline-none placeholder:text-gray-400 focus:border-blue-500"
               />
             </div>
@@ -123,9 +131,13 @@ export default function ResearchersUI({
                     <div className="flex items-start gap-4">
                       <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100">
                         {profile.profile_pic_url ? (
+                          // Profile photos are user uploads from Supabase Storage.
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={profile.profile_pic_url}
                             alt={profile.full_name || "Researcher profile"}
+                            loading="lazy"
+                            decoding="async"
                             className="h-full w-full object-cover"
                           />
                         ) : (
@@ -163,7 +175,7 @@ export default function ResearchersUI({
 
                     {skillTags.length > 0 && (
                       <div className="mt-5">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                           Skills
                         </p>
 
@@ -182,7 +194,7 @@ export default function ResearchersUI({
 
                     {interestTags.length > 0 && (
                       <div className="mt-4">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                           Research interests
                         </p>
 
@@ -254,6 +266,19 @@ export default function ResearchersUI({
               })
             )}
           </div>
+
+          {hasMore && handleLoadMore && (
+            <div className="mt-6 flex justify-center">
+              <button
+                type="button"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="rounded-full bg-gray-50 px-6 py-3 text-sm font-semibold text-gray-700 shadow-sm transition hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingMore ? "Loading..." : "Load more researchers"}
+              </button>
+            </div>
+          )}
         </div>
       </section>
     </main>

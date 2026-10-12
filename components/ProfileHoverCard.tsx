@@ -49,9 +49,13 @@ export default function ProfileHoverCard({
           <div className="flex items-start gap-4">
             <div className="h-16 w-16 shrink-0 overflow-hidden rounded-2xl bg-gradient-to-br from-blue-100 to-indigo-100">
               {profilePicUrl ? (
+                // Avatar from Supabase Storage: a plain <img> so it does not use
+                // Vercel's image-optimization quota.
+                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={profilePicUrl}
                   alt={displayName}
+                  decoding="async"
                   className="h-full w-full object-cover"
                 />
               ) : (
@@ -71,7 +75,7 @@ export default function ProfileHoverCard({
               </p>
 
               {email && (
-                <p className="mt-1 truncate text-xs text-gray-400">{email}</p>
+                <p className="mt-1 truncate text-xs text-gray-500">{email}</p>
               )}
             </div>
           </div>

@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { safeInternalPath } from "@/lib/notifications";
 import NotificationsUI, { type NotificationRow } from "./UI";
+import { logDev } from "@/lib/log";
+import { notify } from "@/lib/feedback";
 
 // The page shows the newest 15 and grows by 15 with "Load more" (audit RG-17).
 const NOTIFICATION_PAGE_SIZE = 15;
@@ -58,7 +60,7 @@ export default function NotificationsClient() {
 
     if (listResult.error) {
       // Keep what is on screen.
-      console.log("LOAD NOTIFICATIONS PAGE ERROR:", listResult.error);
+      logDev("LOAD NOTIFICATIONS PAGE ERROR:", listResult.error);
       setLoading(false);
       return;
     }
@@ -70,7 +72,7 @@ export default function NotificationsClient() {
     setTotalCount(listResult.count ?? rows.length);
 
     if (unreadResult.error) {
-      console.log("COUNT UNREAD NOTIFICATIONS ERROR:", unreadResult.error);
+      logDev("COUNT UNREAD NOTIFICATIONS ERROR:", unreadResult.error);
       setUnreadTotal(rows.filter((item) => !item.is_read).length);
     } else {
       setUnreadTotal(unreadResult.count ?? 0);
@@ -94,38 +96,42 @@ export default function NotificationsClient() {
     }
   };
 
- useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  const load = async () => {
-    try {
-      const authUser = await getCurrentUserSafe();
+    const load = async () => {
+      try {
+        const authUser = await getCurrentUserSafe();
 
-      if (!authUser) {
-        router.push("/auth/login");
-        return;
+        if (!authUser) {
+          router.push("/auth/login");
+          return;
+        }
+
+        if (cancelled) return;
+
+        setUserId(authUser.id);
+        await loadNotifications(authUser.id);
+      } catch (error) {
+        logDev(
+          isAuthLockError(error) ? "NOTIFICATIONS AUTH LOCK ERROR:" : "NOTIFICATIONS LOAD ERROR:",
+          error,
+        );
+        if (!cancelled) {
+          notify("Could not load your notifications. Reload the page to try again.", "error");
+        }
+      } finally {
+        // The loading screen never stays up after a failed check (audit RG-37).
+        if (!cancelled) setLoading(false);
       }
+    };
 
-      if (cancelled) return;
+    load();
 
-      setUserId(authUser.id);
-      await loadNotifications(authUser.id);
-    } catch (error) {
-      if (isAuthLockError(error)) {
-        console.log("NOTIFICATIONS AUTH LOCK ERROR:", error);
-        return;
-      }
-
-      console.log("NOTIFICATIONS LOAD ERROR:", error);
-    }
-  };
-
-  load();
-
-  return () => {
-    cancelled = true;
-  };
-}, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
     if (!userId) return;
@@ -164,7 +170,7 @@ export default function NotificationsClient() {
       .eq("recipient_id", userId);
 
     if (error) {
-      console.log("MARK READ PAGE ERROR:", error);
+      logDev("MARK READ PAGE ERROR:", error);
       return;
     }
 
@@ -184,7 +190,7 @@ export default function NotificationsClient() {
       .eq("is_read", false);
 
     if (error) {
-      console.log("MARK ALL READ PAGE ERROR:", error);
+      logDev("MARK ALL READ PAGE ERROR:", error);
       return;
     }
 

@@ -14,6 +14,7 @@
 
 import {
   AiError,
+  providerErrorForLog,
   type GenerateArgs,
   type GenerateStreamArgs,
 } from "./errors";
@@ -69,9 +70,10 @@ export async function generateStructured<T>({
 
     if (!response.ok) {
       // Read the body for the server log, but never hand it to the client:
-      // provider errors can echo prompt content.
+      // provider errors can echo prompt content, so production logs keep only
+      // the error code.
       const detail = await response.text();
-      console.error("CLAUDE API ERROR:", response.status, detail.slice(0, 500));
+      console.error("CLAUDE API ERROR:", response.status, providerErrorForLog(detail));
       throw new AiError(`Claude returned ${response.status}`, response.status);
     }
 

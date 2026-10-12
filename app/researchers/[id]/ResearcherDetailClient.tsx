@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
+import { friendlyError, notify } from "@/lib/feedback";
+import { logDev } from "@/lib/log";
+import { fetchReadableTexts } from "@/lib/posts/loadPosts";
 import ResearcherDetailUI, {
   type ConnectionStatus,
   type ResearcherProfile,
@@ -69,61 +73,87 @@ export default function ResearcherDetailClient() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+
     const loadResearcherProfile = async () => {
-      const { data: authData } = await supabase.auth.getUser();
+      try {
+        const authUser = await getCurrentUserSafe();
 
-      if (!authData.user) {
-        router.push("/auth/login");
-        return;
+        if (!authUser) {
+          router.push("/auth/login");
+          return;
+        }
+
+        if (cancelled) return;
+
+        setCurrentUserId(authUser.id);
+        await loadConnectionStatus(authUser.id, researcherId);
+
+        const { data: profileData, error: profileError } = await supabase
+          .from("profiles")
+          .select(
+            "id, email, full_name, department, skills, interests, bio, profile_pic_url, cover_photo_url",
+          )
+          .eq("id", researcherId)
+          .single();
+
+        if (cancelled) return;
+
+        if (profileError) {
+          logDev("FETCH RESEARCHER PROFILE ERROR:", profileError);
+          setProfile(null);
+          return;
+        }
+
+        setProfile(profileData as ResearcherProfile);
+
+        // The full text comes only for posts this reader may see (RG-07).
+        const { data: postData, error: postError } = await supabase
+          .from("contents")
+          .select("id, title, abstract, post_type, created_at")
+          .eq("user_id", researcherId)
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        if (postError) {
+          logDev("FETCH RESEARCHER POSTS ERROR:", postError);
+          if (!cancelled) setPosts([]);
+          return;
+        }
+
+        const rows = (postData || []) as Omit<ResearchPost, "content">[];
+        // If the texts cannot be loaded, the titles and abstracts still show.
+        const texts = (await fetchReadableTexts(rows.map((row) => row.id))) ?? {};
+
+        if (!cancelled) {
+          setPosts(rows.map((row) => ({ ...row, content: texts[row.id] ?? null })));
+        }
+      } catch (error) {
+        if (isAuthLockError(error)) {
+          logDev("RESEARCHER AUTH LOCK ERROR:", error);
+          return;
+        }
+
+        logDev("RESEARCHER LOAD ERROR:", error);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      setCurrentUserId(authData.user.id);
-      await loadConnectionStatus(authData.user.id, researcherId);
-
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select(
-          "id, email, full_name, department, skills, interests, bio, profile_pic_url, cover_photo_url",
-        )
-        .eq("id", researcherId)
-        .single();
-
-      if (profileError) {
-        console.log("FETCH RESEARCHER PROFILE ERROR:", profileError);
-        setProfile(null);
-        setLoading(false);
-        return;
-      }
-
-      setProfile(profileData as ResearcherProfile);
-
-      const { data: postData, error: postError } = await supabase
-        .from("contents")
-        .select("id, title, content, post_type, created_at")
-        .eq("user_id", researcherId)
-        .order("created_at", { ascending: false })
-        .limit(10);
-
-      if (postError) {
-        console.log("FETCH RESEARCHER POSTS ERROR:", postError);
-        setPosts([]);
-      } else {
-        setPosts((postData || []) as ResearchPost[]);
-      }
-
-      setLoading(false);
     };
 
     if (researcherId) {
       loadResearcherProfile();
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [researcherId, router]);
 
   const handleSendConnectionRequest = async () => {
     if (!currentUserId || !profile) return;
 
     if (currentUserId === profile.id) {
-      alert("You cannot connect with yourself.");
+      notify("You cannot connect with yourself.", "info");
       return;
     }
 
@@ -138,14 +168,20 @@ export default function ResearcherDetailClient() {
     });
 
     if (error) {
-      console.log("SEND PROFILE CONNECTION REQUEST ERROR:", error);
-      alert(error.message);
+      logDev("SEND PROFILE CONNECTION REQUEST ERROR:", error);
+      notify(
+        error.code === "23505"
+          ? "You already sent a connection request."
+          : friendlyError(error, "Could not send the connection request."),
+        "error",
+      );
       setConnecting(false);
       return;
     }
 
     setConnectionStatus("requested");
     setConnecting(false);
+    notify("Connection request sent.", "success");
   };
 
   return (

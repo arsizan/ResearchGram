@@ -1,7 +1,6 @@
 "use client";
 
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 
 export type ResearcherProfile = {
   id: string;
@@ -18,7 +17,9 @@ export type ResearcherProfile = {
 export type ResearchPost = {
   id: string;
   title: string | null;
+  /** Full text, or null when this reader may only see the abstract. */
   content: string | null;
+  abstract: string | null;
   post_type: string | null;
   created_at: string | null;
 };
@@ -146,9 +147,12 @@ export default function ResearcherDetailUI({
         <div className="overflow-hidden rounded-3xl bg-white shadow-sm">
           <div className="relative h-64 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-600">
             {profile.cover_photo_url && (
+              // Cover photo from Supabase Storage: a plain <img> so it does not use
+              // Vercel's image-optimization quota.
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={profile.cover_photo_url}
-                alt="Researcher cover"
+                alt=""
                 className="h-full w-full object-cover"
               />
             )}
@@ -161,6 +165,9 @@ export default function ResearcherDetailUI({
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
                 <div className="-mt-20 h-36 w-36 overflow-hidden rounded-3xl border-4 border-white bg-gradient-to-br from-blue-100 to-indigo-100 shadow-lg">
                   {profile.profile_pic_url ? (
+                    // Avatar from Supabase Storage: a plain <img> so it does not use
+                    // Vercel's image-optimization quota.
+                    // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={profile.profile_pic_url}
                       alt={profile.full_name || "Researcher profile"}
@@ -190,7 +197,7 @@ export default function ResearcherDetailUI({
                     {profile.department || "Research community"}
                   </p>
 
-                  <p className="mt-1 break-all text-sm text-gray-400">
+                  <p className="mt-1 break-all text-sm text-gray-500">
                     {profile.email}
                   </p>
                 </div>
@@ -249,7 +256,7 @@ export default function ResearcherDetailUI({
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-3">
-          <aside className="space-y-6 lg:col-span-1">
+          <section aria-label="About this researcher" className="space-y-6 lg:col-span-1">
             <div className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold text-gray-950">About</h2>
 
@@ -302,7 +309,7 @@ export default function ResearcherDetailUI({
                 </div>
               )}
             </div>
-          </aside>
+          </section>
 
           <section className="lg:col-span-2">
             <div className="rounded-3xl bg-white p-6 shadow-sm">
@@ -352,7 +359,7 @@ export default function ResearcherDetailUI({
                           )}
                         </span>
 
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-500">
                           {formatTime(post.created_at)}
                         </span>
                       </div>
@@ -362,7 +369,7 @@ export default function ResearcherDetailUI({
                       </h3>
 
                       <p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-600">
-                        {post.content || "No description provided."}
+                        {post.content || post.abstract || "No description provided."}
                       </p>
 
                       <button

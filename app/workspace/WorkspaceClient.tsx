@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
@@ -18,6 +18,8 @@ import WorkspaceUI, {
   type WorkspaceType,
   type WorkspaceTab,
 } from "./UI";
+import { logDev } from "@/lib/log";
+import { confirmAction, friendlyError, notify } from "@/lib/feedback";
 
 // Workspace files go to a private bucket, readable only by workspace members
 // through short-lived signed links (audit RG-05). Path: {workspaceId}/{userId}/{file}.
@@ -39,7 +41,7 @@ async function withSignedUrls(files: WorkspaceFile[]) {
     .createSignedUrls(privatePaths, SIGNED_URL_SECONDS);
 
   if (error) {
-    console.log("WORKSPACE FILE SIGNED URL ERROR:", error);
+    logDev("WORKSPACE FILE SIGNED URL ERROR:", error);
     return files;
   }
 
@@ -188,11 +190,11 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       setUserId(authUser.id);
     } catch (error) {
       if (isAuthLockError(error)) {
-        console.log("WORKSPACE TEAM AUTH LOCK ERROR:", error);
+        logDev("WORKSPACE TEAM AUTH LOCK ERROR:", error);
         return;
       }
 
-      console.log("WORKSPACE TEAM AUTH ERROR:", error);
+      logDev("WORKSPACE TEAM AUTH ERROR:", error);
       return;
     }
   }
@@ -206,7 +208,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     .order("created_at", { ascending: true });
 
   if (memberError) {
-    console.log("LOAD WORKSPACE MEMBERS ERROR:", memberError);
+    logDev("LOAD WORKSPACE MEMBERS ERROR:", memberError);
     setMembers([]);
     return;
   }
@@ -226,7 +228,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       .in("id", memberIds);
 
     if (memberProfileError) {
-      console.log("LOAD MEMBER PROFILES ERROR:", memberProfileError);
+      logDev("LOAD MEMBER PROFILES ERROR:", memberProfileError);
     }
 
     profileMap = (memberProfiles || []).reduce(
@@ -272,7 +274,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     .select("user_one_id, user_two_id")
     .or(`user_one_id.eq.${activeUserId},user_two_id.eq.${activeUserId}`);
 
-  (connectionRows || []).forEach((connection: any) => {
+  ((connectionRows || []) as { user_one_id: string; user_two_id: string }[]).forEach((connection) => {
     addCandidatePair(connection.user_one_id, connection.user_two_id);
   });
 
@@ -282,7 +284,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     .eq("status", "accepted")
     .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`);
 
-  (acceptedResearchRows || []).forEach((request: any) => {
+  ((acceptedResearchRows || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
     addCandidatePair(request.requester_id, request.receiver_id);
   });
 
@@ -292,7 +294,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     .eq("status", "accepted")
     .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`);
 
-  (acceptedProfileRows || []).forEach((request: any) => {
+  ((acceptedProfileRows || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
     addCandidatePair(request.requester_id, request.receiver_id);
   });
 
@@ -313,7 +315,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       .in("id", candidateIdList);
 
   if (candidateProfileError) {
-    console.log("LOAD COLLABORATOR OPTIONS ERROR:", candidateProfileError);
+    logDev("LOAD COLLABORATOR OPTIONS ERROR:", candidateProfileError);
     setCollaboratorOptions([]);
     setSelectedCollaboratorId("");
     return;
@@ -369,16 +371,16 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
         .order("created_at", { ascending: false }),
     ]);
 
-    if (taskResult.error) console.log("LOAD TASKS ERROR:", taskResult.error);
-    if (fileResult.error) console.log("LOAD FILES ERROR:", fileResult.error);
+    if (taskResult.error) logDev("LOAD TASKS ERROR:", taskResult.error);
+    if (fileResult.error) logDev("LOAD FILES ERROR:", fileResult.error);
     if (milestoneResult.error)
-      console.log("LOAD MILESTONES ERROR:", milestoneResult.error);
+      logDev("LOAD MILESTONES ERROR:", milestoneResult.error);
     if (meetingResult.error)
-      console.log("LOAD MEETINGS ERROR:", meetingResult.error);
+      logDev("LOAD MEETINGS ERROR:", meetingResult.error);
     if (recordingResult.error)
-      console.log("LOAD RECORDINGS ERROR:", recordingResult.error);
+      logDev("LOAD RECORDINGS ERROR:", recordingResult.error);
     if (updateResult.error)
-      console.log("LOAD UPDATES ERROR:", updateResult.error);
+      logDev("LOAD UPDATES ERROR:", updateResult.error);
 
     setTasks((taskResult.data || []) as WorkspaceTask[]);
     setWorkspaceFiles(
@@ -399,8 +401,8 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.log("LOAD WORKSPACES ERROR:", error);
-      alert(error.message);
+      logDev("LOAD WORKSPACES ERROR:", error);
+      notify(friendlyError(error, "Could not load your workspaces."), "error");
       setWorkspaces([]);
       return;
     }
@@ -436,12 +438,12 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     }
   };
 
+const loadWorkspacesOnMount = useEffectEvent(() => loadWorkspaces());
+
 useEffect(() => {
   let cancelled = false;
 
   const load = async () => {
-    setLoading(true);
-
     try {
       const authUser = await getCurrentUserSafe();
 
@@ -454,14 +456,14 @@ useEffect(() => {
 
       setUserId(authUser.id);
 
-      await loadWorkspaces();
+      await loadWorkspacesOnMount();
     } catch (error) {
       if (isAuthLockError(error)) {
-        console.log("WORKSPACE AUTH LOCK ERROR:", error);
+        logDev("WORKSPACE AUTH LOCK ERROR:", error);
         return;
       }
 
-      console.log("WORKSPACE LOAD ERROR:", error);
+      logDev("WORKSPACE LOAD ERROR:", error);
     } finally {
       if (!cancelled) {
         setLoading(false);
@@ -496,7 +498,7 @@ const ensureWorkspaceGroupConversation = async (
     .maybeSingle();
 
   if (existingError) {
-    console.log("CHECK WORKSPACE GROUP CONVERSATION ERROR:", existingError);
+    logDev("CHECK WORKSPACE GROUP CONVERSATION ERROR:", existingError);
     return null;
   }
 
@@ -532,7 +534,7 @@ const ensureWorkspaceGroupConversation = async (
     .single();
 
   if (error || !conversation) {
-    console.log("CREATE WORKSPACE GROUP CONVERSATION ERROR:", error);
+    logDev("CREATE WORKSPACE GROUP CONVERSATION ERROR:", error);
     return null;
   }
 
@@ -564,12 +566,12 @@ const ensureWorkspaceGroupConversation = async (
     .maybeSingle();
 
   if (error) {
-    console.log("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
+    logDev("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
     return;
   }
 
   if (!conversation?.id) {
-    console.log("No workspace group conversation found for:", workspaceId);
+    logDev("No workspace group conversation found for:", workspaceId);
     return;
   }
 
@@ -588,7 +590,7 @@ const ensureWorkspaceGroupConversation = async (
     );
 
   if (memberError) {
-    console.log("ADD USER TO WORKSPACE GROUP CHAT ERROR:", memberError);
+    logDev("ADD USER TO WORKSPACE GROUP CHAT ERROR:", memberError);
   }
 };
 
@@ -604,7 +606,7 @@ const ensureWorkspaceGroupConversation = async (
     .maybeSingle();
 
   if (error) {
-    console.log("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
+    logDev("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
     return;
   }
 
@@ -617,18 +619,18 @@ const ensureWorkspaceGroupConversation = async (
     .eq("user_id", userIdToRemove);
 
   if (removeError) {
-    console.log("REMOVE USER FROM WORKSPACE GROUP CHAT ERROR:", removeError);
+    logDev("REMOVE USER FROM WORKSPACE GROUP CHAT ERROR:", removeError);
   }
 };
 
   const handleCreateWorkspace = async () => {
     if (!userId) {
-      alert("You must be logged in.");
+      notify("You must be logged in.", "error");
       return;
     }
 
     if (!workspaceTitle.trim()) {
-      alert("Add a workspace title.");
+      notify("Add a workspace title.", "info");
       return;
     }
 
@@ -649,8 +651,8 @@ const ensureWorkspaceGroupConversation = async (
       .single();
 
     if (workspaceError || !workspaceData) {
-      console.log("CREATE WORKSPACE ERROR:", workspaceError);
-      alert(workspaceError?.message || "Could not create workspace.");
+      logDev("CREATE WORKSPACE ERROR:", workspaceError);
+      notify(friendlyError(workspaceError, "Could not create workspace."), "error");
       setCreatingWorkspace(false);
       return;
     }
@@ -664,9 +666,10 @@ const ensureWorkspaceGroupConversation = async (
       });
 
     if (memberError) {
-      console.log("CREATE WORKSPACE MEMBER ERROR:", memberError);
-      alert(
-        `Workspace created, but owner member row failed: ${memberError.message}`,
+      logDev("CREATE WORKSPACE MEMBER ERROR:", memberError);
+      notify(
+        "The workspace was created, but you could not be added as its owner. Reload the page before creating it again, so it is not made twice.",
+        "error",
       );
     }
     // If the new workspace is shared, automatically create workspace group chat.
@@ -693,9 +696,11 @@ const ensureWorkspaceGroupConversation = async (
   const handleConvertToShared = async () => {
     if (!selectedWorkspace) return;
 
-    const confirmed = window.confirm(
-      "Convert this personal workspace into a shared workspace?",
-    );
+    const confirmed = await confirmAction({
+      title: "Make this workspace shared?",
+      message: "You can then add collaborators, and a group chat is created for the team.",
+      confirmLabel: "Make shared",
+    });
 
     if (!confirmed) return;
 
@@ -708,8 +713,8 @@ const ensureWorkspaceGroupConversation = async (
       .eq("id", selectedWorkspace.id);
 
     if (error) {
-      console.log("CONVERT WORKSPACE ERROR:", error);
-      alert(error.message);
+      logDev("CONVERT WORKSPACE ERROR:", error);
+      notify(friendlyError(error, "Could not convert the workspace."), "error");
       return;
     }
 
@@ -723,19 +728,19 @@ const ensureWorkspaceGroupConversation = async (
 
   const handleAddWorkspaceMember = async () => {
     if (!selectedWorkspaceId || !selectedWorkspace) {
-      alert("Select a workspace first.");
+      notify("Select a workspace first.", "info");
       return;
     }
 
     if (selectedWorkspace.workspace_type !== "shared") {
-      alert("Convert this personal workspace to shared first.");
+      notify("Convert this personal workspace to shared first.", "info");
       return;
     }
 
     const memberIdToAdd = selectedCollaboratorId.trim();
 
     if (!memberIdToAdd) {
-      alert("Please select a collaborator first.");
+      notify("Please select a collaborator first.", "info");
       return;
     }
 
@@ -744,18 +749,20 @@ const ensureWorkspaceGroupConversation = async (
     );
 
     if (!selectedProfile) {
-      alert("Selected collaborator was not found. Please select again.");
+      notify("Selected collaborator was not found. Please select again.", "error");
       setSelectedCollaboratorId("");
       return;
     }
 
-    const confirmAdd = window.confirm(
-      `Add ${
+    const confirmAdd = await confirmAction({
+      title: "Add collaborator?",
+      message: `Add ${
         selectedProfile.full_name ||
         selectedProfile.email ||
         "this collaborator"
       } to this workspace?`,
-    );
+      confirmLabel: "Add",
+    });
 
     if (!confirmAdd) return;
 
@@ -768,8 +775,8 @@ const ensureWorkspaceGroupConversation = async (
     });
 
     if (error) {
-      console.log("ADD WORKSPACE MEMBER ERROR:", error);
-      alert(error.message);
+      logDev("ADD WORKSPACE MEMBER ERROR:", error);
+      notify(friendlyError(error, "Could not add the member."), "error");
       setAddingMember(false);
       return;
     }
@@ -788,15 +795,18 @@ const ensureWorkspaceGroupConversation = async (
     if (!selectedWorkspaceId) return;
 
     if (member.role === "owner") {
-      alert("Workspace owner cannot be removed.");
+      notify("Workspace owner cannot be removed.", "error");
       return;
     }
 
-    const confirmRemove = window.confirm(
-      `Remove ${
+    const confirmRemove = await confirmAction({
+      title: "Remove member?",
+      message: `Remove ${
         member.profile?.full_name || member.profile?.email || "this member"
       } from this workspace?`,
-    );
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
 
     if (!confirmRemove) return;
 
@@ -806,8 +816,8 @@ const ensureWorkspaceGroupConversation = async (
       .eq("id", member.id);
 
     if (error) {
-      console.log("REMOVE WORKSPACE MEMBER ERROR:", error);
-      alert(error.message);
+      logDev("REMOVE WORKSPACE MEMBER ERROR:", error);
+      notify(friendlyError(error, "Could not remove the member."), "error");
       return;
     }
 
@@ -821,12 +831,12 @@ await removeUserFromWorkspaceGroupConversation(
 
   const handleAddTask = async () => {
     if (!selectedWorkspaceId) {
-      alert("Create or select a workspace first.");
+      notify("Create or select a workspace first.", "info");
       return;
     }
 
     if (!taskTitle.trim()) {
-      alert("Add a task title.");
+      notify("Add a task title.", "info");
       return;
     }
 
@@ -844,8 +854,8 @@ await removeUserFromWorkspaceGroupConversation(
     });
 
     if (error) {
-      console.log("ADD TASK ERROR:", error);
-      alert(error.message);
+      logDev("ADD TASK ERROR:", error);
+      notify(friendlyError(error, "Could not add the task."), "error");
       setAddingTask(false);
       return;
     }
@@ -870,8 +880,8 @@ await removeUserFromWorkspaceGroupConversation(
       .eq("id", taskId);
 
     if (error) {
-      console.log("UPDATE TASK ERROR:", error);
-      alert(error.message);
+      logDev("UPDATE TASK ERROR:", error);
+      notify(friendlyError(error, "Could not update the task."), "error");
       return;
     }
 
@@ -882,18 +892,18 @@ await removeUserFromWorkspaceGroupConversation(
 
   const handleUploadFiles = async () => {
     if (!selectedWorkspaceId) {
-      alert("Select a workspace first.");
+      notify("Select a workspace first.", "info");
       return;
     }
 
     if (selectedFiles.length === 0) {
-      alert("Choose at least one file.");
+      notify("Choose at least one file.", "info");
       return;
     }
 
     const fileProblem = selectedFiles.map((file) => uploadProblem(file)).find(Boolean);
     if (fileProblem) {
-      alert(fileProblem);
+      notify(fileProblem, "error");
       return;
     }
 
@@ -913,8 +923,8 @@ await removeUserFromWorkspaceGroupConversation(
         });
 
       if (uploadError) {
-        console.log("WORKSPACE FILE UPLOAD ERROR:", uploadError);
-        alert(uploadError.message);
+        logDev("WORKSPACE FILE UPLOAD ERROR:", uploadError);
+        notify(friendlyError(uploadError, "Could not upload the file."), "error");
         setUploadingFile(false);
         return;
       }
@@ -935,8 +945,8 @@ await removeUserFromWorkspaceGroupConversation(
         });
 
       if (insertError) {
-        console.log("WORKSPACE FILE INSERT ERROR:", insertError);
-        alert(insertError.message);
+        logDev("WORKSPACE FILE INSERT ERROR:", insertError);
+        notify(friendlyError(insertError, "Could not save the file."), "error");
         setUploadingFile(false);
         return;
       }
@@ -949,12 +959,12 @@ await removeUserFromWorkspaceGroupConversation(
 
   const handleAddMilestone = async () => {
     if (!selectedWorkspaceId) {
-      alert("Select a workspace first.");
+      notify("Select a workspace first.", "info");
       return;
     }
 
     if (!milestoneTitle.trim()) {
-      alert("Add a milestone title.");
+      notify("Add a milestone title.", "info");
       return;
     }
 
@@ -970,8 +980,8 @@ await removeUserFromWorkspaceGroupConversation(
     });
 
     if (error) {
-      console.log("ADD MILESTONE ERROR:", error);
-      alert(error.message);
+      logDev("ADD MILESTONE ERROR:", error);
+      notify(friendlyError(error, "Could not add the milestone."), "error");
       setSavingMilestone(false);
       return;
     }
@@ -997,8 +1007,8 @@ await removeUserFromWorkspaceGroupConversation(
       .eq("id", milestoneId);
 
     if (error) {
-      console.log("UPDATE MILESTONE ERROR:", error);
-      alert(error.message);
+      logDev("UPDATE MILESTONE ERROR:", error);
+      notify(friendlyError(error, "Could not update the milestone."), "error");
       return;
     }
 
@@ -1009,17 +1019,17 @@ await removeUserFromWorkspaceGroupConversation(
 
   const handleCreateMeeting = async () => {
     if (!selectedWorkspaceId) {
-      alert("Select a workspace first.");
+      notify("Select a workspace first.", "info");
       return;
     }
 
     if (!userId) {
-      alert("You must be logged in.");
+      notify("You must be logged in.", "error");
       return;
     }
 
     if (!meetingTitle.trim()) {
-      alert("Add a meeting title.");
+      notify("Add a meeting title.", "info");
       return;
     }
 
@@ -1049,8 +1059,8 @@ await removeUserFromWorkspaceGroupConversation(
         .single();
 
       if (error) {
-        console.log("CREATE MEETING ERROR:", error);
-        alert(error.message);
+        logDev("CREATE MEETING ERROR:", error);
+        notify(friendlyError(error, "Could not create the meeting."), "error");
         return;
       }
 
@@ -1061,8 +1071,8 @@ await removeUserFromWorkspaceGroupConversation(
       setActiveMeeting(createdMeeting as WorkspaceMeeting);
       setActiveTab("meetings");
     } catch (error) {
-      console.log("CREATE MEETING UNKNOWN ERROR:", error);
-      alert("Could not create meeting. Check browser console for details.");
+      logDev("CREATE MEETING UNKNOWN ERROR:", error);
+      notify(friendlyError(error, "Could not create the meeting."), "error");
     } finally {
       setSavingMeeting(false);
     }
@@ -1070,12 +1080,12 @@ await removeUserFromWorkspaceGroupConversation(
 
   const handleAddUpdate = async () => {
     if (!selectedWorkspaceId) {
-      alert("Select a workspace first.");
+      notify("Select a workspace first.", "info");
       return;
     }
 
     if (!updateText.trim()) {
-      alert("Write an update first.");
+      notify("Write an update first.", "info");
       return;
     }
 
@@ -1089,8 +1099,8 @@ await removeUserFromWorkspaceGroupConversation(
     });
 
     if (error) {
-      console.log("ADD UPDATE ERROR:", error);
-      alert(error.message);
+      logDev("ADD UPDATE ERROR:", error);
+      notify(friendlyError(error, "Could not post the update."), "error");
       setSavingUpdate(false);
       return;
     }

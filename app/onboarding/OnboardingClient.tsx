@@ -5,6 +5,8 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import OnboardingUI from "./UI";
+import { logDev } from "@/lib/log";
+import { friendlyError, notify } from "@/lib/feedback";
 
 function cleanNextPath(value: string | null) {
   if (!value) return "/feed";
@@ -160,7 +162,7 @@ useEffect(() => {
         .maybeSingle();
 
       if (error) {
-        console.log("LOAD ONBOARDING PROFILE ERROR:", error);
+        logDev("LOAD ONBOARDING PROFILE ERROR:", error);
       }
 
       if (cancelled) return;
@@ -189,11 +191,11 @@ useEffect(() => {
       }
     } catch (error) {
       if (isAuthLockError(error)) {
-        console.log("ONBOARDING AUTH LOCK ERROR:", error);
+        logDev("ONBOARDING AUTH LOCK ERROR:", error);
         return;
       }
 
-      console.log("ONBOARDING LOAD ERROR:", error);
+      logDev("ONBOARDING LOAD ERROR:", error);
     } finally {
       if (!cancelled) {
         setLoading(false);
@@ -233,6 +235,16 @@ useEffect(() => {
       return "Institution is required for faculty.";
     }
 
+    // The database stores a whole number; say which field is wrong instead of
+    // a general "not valid" message from the save.
+    if (graduationYear.trim()) {
+      const year = Number(graduationYear.trim());
+      const latest = new Date().getFullYear() + 10;
+      if (!Number.isInteger(year) || year < 1950 || year > latest) {
+        return `Graduation year must be a year between 1950 and ${latest}, for example 2022.`;
+      }
+    }
+
     return null;
   };
 
@@ -240,7 +252,7 @@ useEffect(() => {
     const validationError = validateForm();
 
     if (validationError) {
-      alert(validationError);
+      notify(validationError, "error");
       return;
     }
 
@@ -282,8 +294,8 @@ useEffect(() => {
     );
 
     if (error) {
-      console.log("SAVE ONBOARDING ERROR:", error);
-      alert(error.message);
+      logDev("SAVE ONBOARDING ERROR:", error);
+      notify(friendlyError(error, "Could not save your profile."), "error");
       setSaving(false);
       return;
     }
