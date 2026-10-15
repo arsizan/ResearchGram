@@ -120,6 +120,7 @@ const userId = authUser.id;
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an async load: its state changes come after its first await, which this rule does not follow
     loadNetworkOnMount();
   }, []);
 
@@ -160,90 +161,20 @@ const userId = authUser.id;
 
     setStartingConversationId(targetUserId);
 
-    const { data: existingConversation, error: existingError } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("conversation_type", "direct")
-      .is("request_id", null)
-      .is("content_id", null)
-      .or(
-        `and(participant_one_id.eq.${currentUserId},participant_two_id.eq.${targetUserId}),and(participant_one_id.eq.${targetUserId},participant_two_id.eq.${currentUserId})`,
-      )
-      .maybeSingle();
+    // The database finds the existing chat or starts one with both people in
+    // it, in one step (audit RG-20).
+    const { data: conversationId, error } = await supabase.rpc("start_direct_conversation", {
+      p_other_user: targetUserId,
+    });
 
-    if (existingError) {
-      logDev("CHECK DIRECT CONVERSATION ERROR:", existingError);
-      notify(friendlyError(existingError, "Could not open the chat."), "error");
+    if (error || !conversationId) {
+      logDev("START DIRECT CONVERSATION ERROR:", error);
+      notify(friendlyError(error, "Could not open the chat."), "error");
       setStartingConversationId(null);
       return;
     }
 
-    if (existingConversation) {
-      await supabase
-        .from("conversations")
-        .update({
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", existingConversation.id);
-
-      router.push(`/messages?conversation=${existingConversation.id}`);
-      return;
-    }
-
-    const [participantOneId, participantTwoId] =
-      currentUserId < targetUserId
-        ? [currentUserId, targetUserId]
-        : [targetUserId, currentUserId];
-
-    const { data: newConversation, error: createError } = await supabase
-      .from("conversations")
-      .insert({
-        request_id: null,
-        content_id: null,
-        participant_one_id: participantOneId,
-        participant_two_id: participantTwoId,
-        conversation_type: "direct",
-        created_by: currentUserId,
-        updated_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (createError || !newConversation) {
-      logDev("CREATE DIRECT CONVERSATION ERROR:", createError);
-      notify(friendlyError(createError, "Could not start conversation."), "error");
-      setStartingConversationId(null);
-      return;
-    }
-
-    // The Messages page lists conversations by membership, and message access
-    // is checked against it, so both people need a member row (audit RG-10).
-    const now = new Date().toISOString();
-    const { error: memberError } = await supabase
-      .from("conversation_members")
-      .insert([
-        {
-          conversation_id: newConversation.id,
-          user_id: currentUserId,
-          role: "member",
-          last_read_at: now,
-        },
-        {
-          conversation_id: newConversation.id,
-          user_id: targetUserId,
-          role: "member",
-          last_read_at: now,
-        },
-      ]);
-
-    if (memberError) {
-      logDev("CREATE DIRECT CONVERSATION MEMBERS ERROR:", memberError);
-      notify(friendlyError(memberError, "Could not start the chat."), "error");
-      setStartingConversationId(null);
-      return;
-    }
-
-    router.push(`/messages?conversation=${newConversation.id}`);
+    router.push(`/messages?conversation=${conversationId}`);
   };
 
   return (

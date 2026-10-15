@@ -33,6 +33,12 @@ export const FILE_TYPES = [
   "application/octet-stream",
 ];
 
+/** Voice messages, as browsers record them (chat attachments only). */
+export const AUDIO_TYPES = ["audio/webm", "audio/ogg", "audio/mp4", "audio/mpeg", "audio/wav", "audio/aac"];
+
+/** Chat attachments (the chat-attachments bucket allows 25 MB). */
+export const MAX_CHAT_FILE_BYTES = 25 * 1024 * 1024;
+
 const SAFE = new Set(FILE_TYPES);
 
 function megabytes(bytes: number) {
@@ -59,9 +65,41 @@ export function uploadProblem(file: File, options: { imagesOnly?: boolean } = {}
   return "";
 }
 
-/** The file as it should be stored: known safe types keep theirs, the rest become downloads. */
-export function asUploadBody(file: File) {
+/** Returns what is wrong with a file for a chat message, or "" when it can be sent. */
+export function chatUploadProblem(file: File) {
+  if (file.size === 0) return `"${file.name}" is empty.`;
+  if (file.size > MAX_CHAT_FILE_BYTES) {
+    return `"${file.name}" is larger than ${megabytes(MAX_CHAT_FILE_BYTES)}. Share bigger files in a workspace.`;
+  }
+  return "";
+}
+
+// Other names browsers use for the same audio formats.
+const AUDIO_ALIASES: Record<string, string> = {
+  "audio/x-m4a": "audio/mp4",
+  "audio/m4a": "audio/mp4",
+  "audio/mp3": "audio/mpeg",
+  "audio/x-wav": "audio/wav",
+  "audio/wave": "audio/wav",
+  "audio/vnd.wave": "audio/wav",
+  "audio/x-aac": "audio/aac",
+};
+
+/**
+ * The file as it should be stored: known safe types keep theirs, the rest
+ * become downloads. In chats (`allowAudio`) audio files keep an audio type, so
+ * they play in the browser instead of downloading.
+ */
+export function asUploadBody(file: File, options: { allowAudio?: boolean } = {}) {
   const type = (file.type || "").toLowerCase();
   if (SAFE.has(type)) return file;
+
+  if (options.allowAudio) {
+    const audio = AUDIO_ALIASES[type] || type;
+    if (AUDIO_TYPES.includes(audio)) {
+      return audio === type ? file : new File([file], file.name, { type: audio });
+    }
+  }
+
   return new File([file], file.name, { type: "application/octet-stream" });
 }

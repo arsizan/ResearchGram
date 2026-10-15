@@ -17,13 +17,27 @@ import {
 } from "@/lib/posts/loadPosts";
 import { usePostActions } from "@/lib/posts/usePostActions";
 import FeedUI, { type PlatformAuthor, type Post } from "./UI";
-import { friendlyError, notify } from "@/lib/feedback";
+import { friendlyError, isUnclearFailure, notify } from "@/lib/feedback";
+import { newId } from "@/lib/ids";
 
 // The feed shows the newest 50 posts and grows by 50 with "Load more posts"
 // (audit RG-17), up to 150. Each refresh asks for comments, files and authors
 // by post id in the request URL, which must stay short.
 const FEED_PAGE_SIZE = 50;
 const FEED_MAX_POSTS = 150;
+
+// A file uploaded for a new post, described for create_post().
+type PendingAttachment = {
+  storage_path: string;
+  bucket_name: string;
+  file_url: string;
+  original_name: string;
+  mime_type: string | null;
+  file_ext: string;
+  file_size: number;
+  attachment_type: string;
+  file_role: "full_paper" | "attachment";
+};
 
 function detectAttachmentType(file: File) {
   const name = file.name.toLowerCase();
@@ -82,9 +96,18 @@ function detectAttachmentType(file: File) {
   return "other";
 }
 
+// The extension goes into the storage path, so only letters and digits:
+// "Lab notes" (no extension) or "data.tar gz" would otherwise put a space
+// there and break the file's link.
 function getFileExt(file: File) {
-  return file.name.split(".").pop()?.toLowerCase() || "bin";
+  const parts = file.name.split(".");
+  const ext = parts.length > 1 ? (parts.pop() || "").toLowerCase() : "";
+  return /^[a-z0-9]{1,10}$/.test(ext) ? ext : "bin";
 }
+
+// The same limits as the create_post database function.
+const MAX_POST_FILES = 20;
+const MAX_POST_AUTHORS = 50;
 
 export default function FeedClient() {
   const router = useRouter();
@@ -424,6 +447,8 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     );
   };
 
+  // Uploads one file for a post that is about to be created. The database row
+  // is written by create_post together with the post (audit RG-20).
   const uploadAttachment = async ({
     file,
     contentId,
@@ -431,18 +456,14 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     bucketName,
     accessLevel,
     fileRole,
-    isFullPaper,
-    isPreviewFile,
   }: {
     file: File;
     contentId: string;
     index: number;
     bucketName: string;
     accessLevel: "public" | "restricted";
-    fileRole: string;
-    isFullPaper: boolean;
-    isPreviewFile: boolean;
-  }) => {
+    fileRole: "full_paper" | "attachment";
+  }): Promise<PendingAttachment> => {
     const ext = getFileExt(file);
     const attachmentType = detectAttachmentType(file);
     const storagePath = `uploads/${userId}/${contentId}/${Date.now()}-${index}.${ext}`;
@@ -468,26 +489,32 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       fileUrl = publicData.publicUrl;
     }
 
-    const { error: attachmentInsertError } = await supabase
-      .from("content_attachments")
-      .insert({
-        content_id: contentId,
-        file_url: fileUrl,
-        storage_path: storagePath,
-        original_name: file.name,
-        mime_type: file.type || null,
-        file_ext: ext,
-        file_size: file.size,
-        attachment_type: attachmentType,
-        bucket_name: bucketName,
-        access_level: accessLevel,
-        file_role: fileRole,
-        is_full_paper: isFullPaper,
-        is_preview_file: isPreviewFile,
-      });
+    return {
+      storage_path: storagePath,
+      bucket_name: bucketName,
+      file_url: fileUrl,
+      original_name: file.name,
+      mime_type: file.type || null,
+      file_ext: ext,
+      file_size: file.size,
+      attachment_type: attachmentType,
+      file_role: fileRole,
+    };
+  };
 
-    if (attachmentInsertError) {
-      throw attachmentInsertError;
+  // Files of a post that could not be created are deleted again.
+  const removeUploads = async (uploaded: PendingAttachment[]) => {
+    const pathsByBucket = new Map<string, string[]>();
+    uploaded.forEach((file) => {
+      pathsByBucket.set(file.bucket_name, [
+        ...(pathsByBucket.get(file.bucket_name) || []),
+        file.storage_path,
+      ]);
+    });
+
+    for (const [bucketName, paths] of pathsByBucket) {
+      const { error } = await supabase.storage.from(bucketName).remove(paths);
+      if (error) logDev("REMOVE UNUSED UPLOADS ERROR:", error);
     }
   };
 
@@ -518,8 +545,7 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       return;
     }
 
-    // Check every file before the post exists, so a rejected file cannot leave
-    // a half-made post behind (audit RG-21).
+    // Check every file before anything is uploaded (audit RG-21).
     const fileProblem = [fullPaperFile, ...files]
       .filter((file): file is File => Boolean(file))
       .map((file) => uploadProblem(file))
@@ -530,60 +556,48 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
       return;
     }
 
-    setUploading(true);
-
-    const shouldAllowFullPaperRequest =
-      isPaper && fullPaperAccessMode === "request_required";
-
-    const { data: insertedContent, error: insertError } = await supabase
-      .from("contents")
-      .insert({
-        user_id: userId,
-        title: title.trim(),
-        content: content.trim(),
-        abstract: abstract.trim() || null,
-        post_type: postType,
-        content_category: contentCategory,
-        visibility_mode: visibilityMode,
-        full_paper_access_mode: fullPaperAccessMode,
-        allow_full_paper_request: shouldAllowFullPaperRequest,
-        doi: doi.trim() || null,
-        keywords: keywords.trim() || null,
-        publication_status: "published",
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !insertedContent) {
-      logDev("INSERT CONTENT ERROR:", insertError);
-      notify(friendlyError(insertError, "Could not create the post."), "error");
-      setUploading(false);
+    if ((fullPaperFile ? 1 : 0) + files.length > MAX_POST_FILES) {
+      notify(`A post can have up to ${MAX_POST_FILES} files.`, "info");
       return;
     }
 
-    const contentId = insertedContent.id;
+    if (selectedPlatformAuthors.length + manualAuthors.length > MAX_POST_AUTHORS) {
+      notify(`A post can list up to ${MAX_POST_AUTHORS} co-authors.`, "info");
+      return;
+    }
+
+    setUploading(true);
+
+    // The post's id is chosen here so its files can be uploaded to its folder
+    // first; then the post, its co-authors and its files are saved in one
+    // database call. Either all of it is saved, or none of it (audit RG-20).
+    let contentId = "";
+    const uploaded: PendingAttachment[] = [];
+    let askedDatabase = false;
 
     try {
+      contentId = newId();
+
       if (fullPaperFile) {
         const restricted =
           isPaper &&
           (fullPaperAccessMode === "request_required" ||
             fullPaperAccessMode === "private");
 
-        await uploadAttachment({
-          file: fullPaperFile,
-          contentId,
-          index: 0,
-          bucketName: restricted ? RESTRICTED_BUCKET_NAME : PUBLIC_BUCKET_NAME,
-          accessLevel: restricted ? "restricted" : "public",
-          fileRole: "full_paper",
-          isFullPaper: true,
-          isPreviewFile: false,
-        });
+        uploaded.push(
+          await uploadAttachment({
+            file: fullPaperFile,
+            contentId,
+            index: 0,
+            bucketName: restricted ? RESTRICTED_BUCKET_NAME : PUBLIC_BUCKET_NAME,
+            accessLevel: restricted ? "restricted" : "public",
+            fileRole: "full_paper",
+          }),
+        );
       }
 
-      if (files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
+      for (let i = 0; i < files.length; i++) {
+        uploaded.push(
           await uploadAttachment({
             file: files[i],
             contentId,
@@ -591,52 +605,55 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
             bucketName: PUBLIC_BUCKET_NAME,
             accessLevel: "public",
             fileRole: "attachment",
-            isFullPaper: false,
-            isPreviewFile: true,
-          });
-        }
+          }),
+        );
       }
 
-      const authorRows = [
-        ...selectedPlatformAuthors.map((author, index) => ({
-          content_id: contentId,
-          profile_id: author.id,
-          manual_name: null,
-          author_order: index + 1,
-          author_role: "co_author",
-        })),
-        ...manualAuthors.map((authorName, index) => ({
-          content_id: contentId,
-          profile_id: null,
-          manual_name: authorName,
-          author_order: selectedPlatformAuthors.length + index + 1,
-          author_role: "co_author",
-        })),
+      const authors = [
+        ...selectedPlatformAuthors.map((author) => ({ profile_id: author.id })),
+        ...manualAuthors.map((authorName) => ({ manual_name: authorName })),
       ];
 
-      if (authorRows.length > 0) {
-        const { error: authorError } = await supabase
-          .from("content_authors")
-          .insert(authorRows);
+      askedDatabase = true;
+      const { error: createError } = await supabase.rpc("create_post", {
+        p_id: contentId,
+        p_title: title.trim(),
+        p_content: content.trim(),
+        p_abstract: abstract.trim() || null,
+        p_post_type: postType,
+        p_content_category: contentCategory,
+        p_visibility_mode: visibilityMode,
+        p_full_paper_access_mode: fullPaperAccessMode,
+        p_doi: doi.trim() || null,
+        p_keywords: keywords.trim() || null,
+        p_authors: authors,
+        p_attachments: uploaded,
+      });
 
-        if (authorError) {
-          throw authorError;
-        }
-      }
+      if (createError) throw createError;
     } catch (error) {
-      // The post exists already; say so, so it is not published twice.
-      logDev("POST UPLOAD/AUTHOR ERROR:", error);
-      notify(
-        `Your post was published, but a file or co-author could not be saved. ${friendlyError(
-          error,
-          "Please try again later.",
-        )}`,
-        "error",
-      );
-      resetPostForm();
-      await fetchPosts(userId);
-      setUploading(false);
-      return;
+      // No answer from the server: the post may have been saved anyway, and
+      // then its files must stay. They are only removed when it certainly
+      // was not saved.
+      let saved = false;
+      let keepUploads = false;
+      if (askedDatabase && isUnclearFailure(error)) {
+        const { data, error: checkError } = await supabase
+          .from("contents")
+          .select("id")
+          .eq("id", contentId)
+          .maybeSingle();
+        if (data) saved = true;
+        else if (checkError) keepUploads = true;
+      }
+
+      if (!saved) {
+        logDev("CREATE POST ERROR:", error);
+        if (!keepUploads) await removeUploads(uploaded);
+        notify(friendlyError(error, "Could not create the post."), "error");
+        setUploading(false);
+        return;
+      }
     }
 
     resetPostForm();

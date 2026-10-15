@@ -2,15 +2,12 @@
 
 import { useState, type FormEvent } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { logDev } from '@/lib/log'
 import { PASSWORD_HINT, passwordProblem } from '@/lib/passwordPolicy'
 import { friendlyAuthError } from '@/lib/feedback'
 
 export default function SignUpPage() {
-  const router = useRouter()
-
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fullName, setFullName] = useState('')
@@ -95,10 +92,13 @@ export default function SignUpPage() {
         return
       }
 
-      showSuccess('Signup successful. Redirecting to login...')
+      // Signed in straight away (email confirmation is off).
+      showSuccess('Signup successful. Opening your profile...')
 
+      // A full page load (see the login page): the app's router may still
+      // remember /profile as "redirects to login" from before.
       setTimeout(() => {
-        router.push('/auth/login')
+        window.location.replace('/profile')
       }, 800)
     } catch (err) {
       logDev('Unexpected signup error:', err)

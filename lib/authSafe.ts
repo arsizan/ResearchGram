@@ -1,5 +1,5 @@
 import { isAuthApiError, isAuthSessionMissingError, type User } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { sessionReady, supabase } from "@/lib/supabase";
 
 let currentUserPromise: Promise<User | null> | null = null;
 
@@ -58,6 +58,9 @@ export async function getCurrentUserSafe() {
   }
 
   currentUserPromise = (async () => {
+    // A session saved by the previous version is moved into cookies first.
+    await sessionReady;
+
     try {
       return await readCurrentUserOnce();
     } catch (error) {

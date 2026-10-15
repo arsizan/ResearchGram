@@ -125,6 +125,17 @@ type ErrorLike = {
 };
 
 /**
+ * True when a database call failed without an answer from the server (the
+ * connection dropped): the change may have been saved anyway. Answers from
+ * the server always carry a code.
+ */
+export function isUnclearFailure(error: unknown) {
+  if (!error || typeof error !== "object") return true;
+  const code = (error as ErrorLike).code;
+  return code === undefined || code === null || code === "";
+}
+
+/**
  * Turns a Supabase, Postgres, storage or network error into a sentence a user
  * can act on. Raw database messages (table names, constraint names, SQL) are
  * never shown; the fallback describes what failed instead.

@@ -337,6 +337,7 @@ const loadPage = async () => {
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an async load: its state changes come after its first await, which this rule does not follow
     loadPageOnMount();
   }, []);
 

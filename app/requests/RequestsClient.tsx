@@ -4,7 +4,6 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { createNotification } from "@/lib/notifications";
 import RequestsUI, {
   type ContentPost,
   type Profile,
@@ -378,253 +377,59 @@ const loadRequests = async () => {
   });
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an async load: its state changes come after its first await, which this rule does not follow
     loadRequestsOnMount();
   }, []);
 
+  // The chat of a collaboration request; the database finds or creates it
+  // and adds both people, in one step (audit RG-20).
   const ensureResearchConversation = async (request: UnifiedRequestView) => {
-    if (
-      request.kind !== "research" ||
-      !request.content_id ||
-      !request.requester_id ||
-      !request.receiver_id
-    ) {
+    if (request.kind !== "research") return null;
+
+    const { data, error } = await supabase.rpc("open_research_conversation", {
+      p_request_id: request.id,
+    });
+
+    if (error || !data) {
+      logDev("OPEN RESEARCH CONVERSATION ERROR:", error);
+      notify(friendlyError(error, "Could not open the conversation."), "error");
       return null;
     }
 
-    const { data: existingConversation, error: existingError } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("request_id", request.id)
-      .maybeSingle();
-
-    if (existingError) {
-      logDev("CHECK CONVERSATION ERROR:", existingError);
-    }
-
-    // Both people need a member row: the Messages page lists conversations by
-    // membership and message access is checked against it (audit RG-10).
-    // ignoreDuplicates makes this safe to repeat for an existing conversation.
-    const addBothMembers = async (conversationId: string) => {
-      const now = new Date().toISOString();
-      const { error: memberError } = await supabase
-        .from("conversation_members")
-        .upsert(
-          [
-            {
-              conversation_id: conversationId,
-              user_id: request.requester_id,
-              role: "member",
-              last_read_at: now,
-            },
-            {
-              conversation_id: conversationId,
-              user_id: request.receiver_id,
-              role: "member",
-              last_read_at: now,
-            },
-          ],
-          { onConflict: "conversation_id,user_id", ignoreDuplicates: true },
-        );
-
-      if (memberError) {
-        logDev("ADD CONVERSATION MEMBERS ERROR:", memberError);
-      }
-    };
-
-    if (existingConversation?.id) {
-      await addBothMembers(existingConversation.id as string);
-      return existingConversation.id as string;
-    }
-
-    const { data: insertedConversation, error: insertError } = await supabase
-      .from("conversations")
-      .insert({
-        request_id: request.id,
-        content_id: request.content_id,
-        participant_one_id: request.requester_id,
-        participant_two_id: request.receiver_id,
-        conversation_type: "collaboration",
-        created_by: userId || null,
-        updated_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (insertError || !insertedConversation) {
-      logDev("CREATE CONVERSATION ERROR:", insertError);
-      notify(friendlyError(insertError, "Could not open the conversation."), "error");
-      return null;
-    }
-
-    await addBothMembers(insertedConversation.id as string);
-
-    return insertedConversation.id as string;
+    return String(data);
   };
 
+  // The answer, what follows from it (a chat or a connection) and the notice
+  // to the sender are saved together by the database (audit RG-20).
   const handleUpdateStatus = async (
     request: UnifiedRequestView,
     nextStatus: RequestStatus,
   ) => {
     setUpdatingId(request.id);
 
-    if (request.kind === "research") {
-      const { error } = await supabase
-        .from("research_requests")
-        .update({
-          status: nextStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", request.id);
+    const call =
+      request.kind === "research"
+        ? supabase.rpc("respond_to_research_request", {
+            p_request_id: request.id,
+            p_status: nextStatus,
+          })
+        : request.kind === "profile"
+          ? supabase.rpc("respond_to_profile_request", {
+              p_request_id: request.id,
+              p_status: nextStatus,
+            })
+          : supabase.rpc("respond_to_paper_access_request", {
+              p_request_id: request.id,
+              p_status: nextStatus,
+            });
 
-      if (error) {
-        logDev("UPDATE RESEARCH REQUEST ERROR:", error);
-        notify(friendlyError(error, "Could not update the request."), "error");
-        setUpdatingId(null);
-        return;
-      }
+    const { error } = await call;
 
-      if (nextStatus === "accepted") {
-        await ensureResearchConversation(request);
-      }
-      if (request.requester_id) {
-        await createNotification({
-          recipientId: request.requester_id,
-          actorId: userId,
-          notificationType:
-            nextStatus === "accepted" ? "request_accepted" : "request_declined",
-          title:
-            nextStatus === "accepted"
-              ? "Collaboration request accepted"
-              : "Collaboration request declined",
-          body:
-            nextStatus === "accepted"
-              ? "Your collaboration request was accepted."
-              : "Your collaboration request was declined.",
-          linkUrl: nextStatus === "accepted" ? "/messages" : "/requests",
-          contentId: request.content_id,
-          requestId: request.id,
-          requestKind: "research",
-        });
-      }
-    }
-
-    if (request.kind === "profile") {
-      const { error } = await supabase
-        .from("profile_requests")
-        .update({
-          status: nextStatus,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", request.id);
-
-      if (error) {
-        logDev("UPDATE PROFILE REQUEST ERROR:", error);
-        notify(friendlyError(error, "Could not update the request."), "error");
-        setUpdatingId(null);
-        return;
-      }
-
-      if (
-        nextStatus === "accepted" &&
-        request.requester_id &&
-        request.receiver_id
-      ) {
-        const sortedIds = [request.requester_id, request.receiver_id].sort();
-
-        const { error: connectionError } = await supabase
-          .from("user_connections")
-          .upsert(
-            {
-              user_one_id: sortedIds[0],
-              user_two_id: sortedIds[1],
-            },
-            {
-              onConflict: "user_one_id,user_two_id",
-            },
-          );
-
-        if (connectionError) {
-          logDev("CREATE CONNECTION ERROR:", connectionError);
-          notify(friendlyError(connectionError, "Could not add the connection."), "error");
-          setUpdatingId(null);
-          return;
-        }
-      }
-      if (request.requester_id) {
-        await createNotification({
-          recipientId: request.requester_id,
-          actorId: userId,
-          notificationType:
-            nextStatus === "accepted" ? "request_accepted" : "request_declined",
-          title:
-            nextStatus === "accepted"
-              ? "Profile request accepted"
-              : "Profile request declined",
-          body:
-            nextStatus === "accepted"
-              ? "Your profile request was accepted."
-              : "Your profile request was declined.",
-          linkUrl: "/requests",
-          requestId: request.id,
-          requestKind: "profile",
-        });
-      }
-    }
-
-    if (request.kind === "paper_access") {
-      const now = new Date().toISOString();
-
-      const updatePayload =
-        nextStatus === "approved"
-          ? {
-              status: "approved",
-              approved_at: now,
-              rejected_at: null,
-              updated_at: now,
-            }
-          : {
-              status: "rejected",
-              approved_at: null,
-              rejected_at: now,
-              updated_at: now,
-            };
-
-      const { error } = await supabase
-        .from("paper_access_requests")
-        .update(updatePayload)
-        .eq("id", request.id);
-
-      if (error) {
-        logDev("UPDATE PAPER ACCESS REQUEST ERROR:", error);
-        notify(friendlyError(error, "Could not update the request."), "error");
-        setUpdatingId(null);
-        return;
-      }
-      if (request.requester_id) {
-        await createNotification({
-          recipientId: request.requester_id,
-          actorId: userId,
-          notificationType:
-            nextStatus === "approved"
-              ? "paper_access_approved"
-              : "paper_access_rejected",
-          title:
-            nextStatus === "approved"
-              ? "Full paper access approved"
-              : "Full paper access rejected",
-          body:
-            nextStatus === "approved"
-              ? "Your full paper access request was approved. You can now open the paper from Feed."
-              : "Your full paper access request was rejected.",
-          linkUrl:
-            nextStatus === "approved" && request.content_id
-              ? `/feed?post=${request.content_id}`
-              : "/requests",
-          contentId: request.content_id,
-          requestId: request.id,
-          requestKind: "paper_access",
-        });
-      }
+    if (error) {
+      logDev("UPDATE REQUEST ERROR:", error);
+      notify(friendlyError(error, "Could not update the request."), "error");
+      setUpdatingId(null);
+      return;
     }
 
     await loadRequests();

@@ -209,6 +209,7 @@ export default function SearchClient() {
 
   useEffect(() => {
     let cancelled = false;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- an async load: its state changes come after its first await, which this rule does not follow
     loadSearch(urlQuery, () => cancelled);
     return () => {
       cancelled = true;

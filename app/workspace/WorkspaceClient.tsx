@@ -20,6 +20,7 @@ import WorkspaceUI, {
 } from "./UI";
 import { logDev } from "@/lib/log";
 import { confirmAction, friendlyError, notify } from "@/lib/feedback";
+import { newId } from "@/lib/ids";
 
 // Workspace files go to a private bucket, readable only by workspace members
 // through short-lived signed links (audit RG-05). Path: {workspaceId}/{userId}/{file}.
@@ -29,6 +30,8 @@ const WORKSPACE_FILES_BUCKET = "workspace-files";
 const LEGACY_PUBLIC_PREFIX = "workspace/";
 const SIGNED_URL_SECONDS = 60 * 60;
 
+const PROFILE_FIELDS = "id, email, full_name, department, profile_pic_url, skills, interests";
+
 async function withSignedUrls(files: WorkspaceFile[]) {
   const privatePaths = files
     .map((file) => file.storage_path)
@@ -36,6 +39,7 @@ async function withSignedUrls(files: WorkspaceFile[]) {
 
   if (privatePaths.length === 0) return files;
 
+  // One request signs every file (audit RG-31).
   const { data, error } = await supabase.storage
     .from(WORKSPACE_FILES_BUCKET)
     .createSignedUrls(privatePaths, SIGNED_URL_SECONDS);
@@ -89,6 +93,12 @@ function getFileCategory(file: File) {
   return "research_file";
 }
 
+// A meeting room nobody can guess (audit RG-22). The database makes its own
+// random name anyway; this is only what the browser sends.
+function randomRoomName() {
+  return `ResearchGram-${newId().replace(/-/g, "")}`;
+}
+
 export default function WorkspaceClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -102,6 +112,21 @@ export default function WorkspaceClient() {
 
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState("");
+
+  // The workspace whose details are on screen. A reply that arrives after
+  // another workspace was opened is ignored, so it cannot show the wrong data.
+  const shownWorkspaceIdRef = useRef("");
+  const isShown = (workspaceId: string) => shownWorkspaceIdRef.current === workspaceId;
+
+  // A full reload of the details only counts if no newer reload has started,
+  // and if nothing was added or changed on screen while it was on its way;
+  // otherwise it would replace a task, milestone or update just added with an
+  // older list. In that case it simply loads again.
+  const detailsLoadRef = useRef(0);
+  const detailsChangeRef = useRef(0);
+  const noteLocalChange = () => {
+    detailsChangeRef.current += 1;
+  };
 
   const [tasks, setTasks] = useState<WorkspaceTask[]>([]);
   const [workspaceFiles, setWorkspaceFiles] = useState<WorkspaceFile[]>([]);
@@ -174,158 +199,186 @@ export default function WorkspaceClient() {
     };
   }, [tasks]);
 
-const loadTeamAndCollaborators = async (workspaceId: string) => {
-  let activeUserId = userId;
+  // The team, and the people who could be added (connections and accepted
+  // requests). Reloaded on its own after a member change (audit RG-31).
+  const loadTeamAndCollaborators = async (workspaceId: string) => {
+    let activeUserId = userId;
 
-  if (!activeUserId) {
-    try {
-      const authUser = await getCurrentUserSafe();
+    if (!activeUserId) {
+      try {
+        const authUser = await getCurrentUserSafe();
 
-      if (!authUser) {
-        router.push("/auth/login");
+        if (!authUser) {
+          router.push("/auth/login");
+          return;
+        }
+
+        activeUserId = authUser.id;
+        setUserId(authUser.id);
+      } catch (error) {
+        if (isAuthLockError(error)) {
+          logDev("WORKSPACE TEAM AUTH LOCK ERROR:", error);
+          return;
+        }
+
+        logDev("WORKSPACE TEAM AUTH ERROR:", error);
         return;
       }
+    }
 
-      activeUserId = authUser.id;
-      setUserId(authUser.id);
-    } catch (error) {
-      if (isAuthLockError(error)) {
-        logDev("WORKSPACE TEAM AUTH LOCK ERROR:", error);
-        return;
-      }
+    if (!activeUserId) return;
 
-      logDev("WORKSPACE TEAM AUTH ERROR:", error);
+    const [memberResult, connectionResult, researchResult, profileRequestResult] =
+      await Promise.all([
+        supabase
+          .from("workspace_members")
+          .select("id, workspace_id, user_id, role, created_at")
+          .eq("workspace_id", workspaceId)
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("user_connections")
+          .select("user_one_id, user_two_id")
+          .or(`user_one_id.eq.${activeUserId},user_two_id.eq.${activeUserId}`),
+        supabase
+          .from("research_requests")
+          .select("requester_id, receiver_id, status")
+          .eq("status", "accepted")
+          .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`),
+        supabase
+          .from("profile_requests")
+          .select("requester_id, receiver_id, status")
+          .eq("status", "accepted")
+          .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`),
+      ]);
+
+    if (!isShown(workspaceId)) return;
+
+    if (memberResult.error) {
+      logDev("LOAD WORKSPACE MEMBERS ERROR:", memberResult.error);
+      setMembers([]);
       return;
     }
-  }
 
-  if (!activeUserId) return;
+    const safeMemberRows = (memberResult.data || []) as WorkspaceMember[];
+    const memberIds = safeMemberRows.map((member) => member.user_id);
+    const memberIdSet = new Set(memberIds);
 
-  const { data: memberRows, error: memberError } = await supabase
-    .from("workspace_members")
-    .select("id, workspace_id, user_id, role, created_at")
-    .eq("workspace_id", workspaceId)
-    .order("created_at", { ascending: true });
+    const candidateIds = new Set<string>();
 
-  if (memberError) {
-    logDev("LOAD WORKSPACE MEMBERS ERROR:", memberError);
-    setMembers([]);
-    return;
-  }
+    const addCandidatePair = (
+      firstUserId: string | null | undefined,
+      secondUserId: string | null | undefined,
+    ) => {
+      if (!firstUserId || !secondUserId) return;
 
-  const safeMemberRows = (memberRows || []) as WorkspaceMember[];
-  const memberIds = safeMemberRows.map((member) => member.user_id);
-  const memberIdSet = new Set(memberIds);
+      const otherUserId =
+        firstUserId === activeUserId
+          ? secondUserId
+          : secondUserId === activeUserId
+            ? firstUserId
+            : null;
 
-  let profileMap: Record<string, Profile> = {};
+      if (!otherUserId) return;
+      if (otherUserId === activeUserId) return;
+      if (memberIdSet.has(otherUserId)) return;
 
-  if (memberIds.length > 0) {
-    const { data: memberProfiles, error: memberProfileError } = await supabase
-      .from("profiles")
-      .select(
-        "id, email, full_name, department, profile_pic_url, skills, interests",
-      )
-      .in("id", memberIds);
+      candidateIds.add(otherUserId);
+    };
 
-    if (memberProfileError) {
-      logDev("LOAD MEMBER PROFILES ERROR:", memberProfileError);
+    ((connectionResult.data || []) as { user_one_id: string; user_two_id: string }[]).forEach((connection) => {
+      addCandidatePair(connection.user_one_id, connection.user_two_id);
+    });
+
+    ((researchResult.data || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
+      addCandidatePair(request.requester_id, request.receiver_id);
+    });
+
+    ((profileRequestResult.data || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
+      addCandidatePair(request.requester_id, request.receiver_id);
+    });
+
+    const candidateIdList = Array.from(candidateIds);
+
+    // Member and candidate profiles in one request.
+    const profileIds = Array.from(new Set([...memberIds, ...candidateIdList]));
+    let profileMap: Record<string, Profile> = {};
+    let profileError: unknown = null;
+
+    if (profileIds.length > 0) {
+      const { data: profileRows, error } = await supabase
+        .from("profiles")
+        .select(PROFILE_FIELDS)
+        .in("id", profileIds);
+
+      profileError = error;
+      if (error) logDev("LOAD WORKSPACE PROFILES ERROR:", error);
+
+      profileMap = ((profileRows || []) as Profile[]).reduce(
+        (acc, profile) => {
+          acc[profile.id] = profile;
+          return acc;
+        },
+        {} as Record<string, Profile>,
+      );
     }
 
-    profileMap = (memberProfiles || []).reduce(
-      (acc, profile) => {
-        acc[profile.id] = profile as Profile;
-        return acc;
-      },
-      {} as Record<string, Profile>,
+    if (!isShown(workspaceId)) return;
+
+    setMembers(
+      safeMemberRows.map((member) => ({
+        ...member,
+        profile: profileMap[member.user_id] || null,
+      })),
     );
-  }
 
-  const normalizedMembers: WorkspaceMember[] = safeMemberRows.map((member) => ({
-    ...member,
-    profile: profileMap[member.user_id] || null,
-  }));
-
-  setMembers(normalizedMembers);
-
-  const candidateIds = new Set<string>();
-
-  const addCandidatePair = (
-    firstUserId: string | null | undefined,
-    secondUserId: string | null | undefined,
-  ) => {
-    if (!firstUserId || !secondUserId) return;
-
-    const otherUserId =
-      firstUserId === activeUserId
-        ? secondUserId
-        : secondUserId === activeUserId
-          ? firstUserId
-          : null;
-
-    if (!otherUserId) return;
-    if (otherUserId === activeUserId) return;
-    if (memberIdSet.has(otherUserId)) return;
-
-    candidateIds.add(otherUserId);
+    setCollaboratorOptions(
+      profileError
+        ? []
+        : candidateIdList
+            .map((id) => profileMap[id])
+            .filter((profile): profile is Profile => Boolean(profile)),
+    );
+    setSelectedCollaboratorId("");
   };
 
-  const { data: connectionRows } = await supabase
-    .from("user_connections")
-    .select("user_one_id, user_two_id")
-    .or(`user_one_id.eq.${activeUserId},user_two_id.eq.${activeUserId}`);
+  const loadWorkspaceFiles = async (workspaceId: string) => {
+    const { data, error } = await supabase
+      .from("workspace_files")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false });
 
-  ((connectionRows || []) as { user_one_id: string; user_two_id: string }[]).forEach((connection) => {
-    addCandidatePair(connection.user_one_id, connection.user_two_id);
-  });
+    if (error) {
+      logDev("LOAD FILES ERROR:", error);
+      return;
+    }
 
-  const { data: acceptedResearchRows } = await supabase
-    .from("research_requests")
-    .select("requester_id, receiver_id, status")
-    .eq("status", "accepted")
-    .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`);
+    const files = await withSignedUrls((data || []) as WorkspaceFile[]);
+    if (isShown(workspaceId)) setWorkspaceFiles(files);
+  };
 
-  ((acceptedResearchRows || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
-    addCandidatePair(request.requester_id, request.receiver_id);
-  });
+  const loadWorkspaceRecordings = async (workspaceId: string) => {
+    const { data, error } = await supabase
+      .from("workspace_recordings")
+      .select("*")
+      .eq("workspace_id", workspaceId)
+      .order("created_at", { ascending: false });
 
-  const { data: acceptedProfileRows } = await supabase
-    .from("profile_requests")
-    .select("requester_id, receiver_id, status")
-    .eq("status", "accepted")
-    .or(`requester_id.eq.${activeUserId},receiver_id.eq.${activeUserId}`);
+    if (error) {
+      logDev("LOAD RECORDINGS ERROR:", error);
+      return;
+    }
 
-  ((acceptedProfileRows || []) as { requester_id: string; receiver_id: string }[]).forEach((request) => {
-    addCandidatePair(request.requester_id, request.receiver_id);
-  });
+    if (isShown(workspaceId)) setRecordings((data || []) as WorkspaceRecording[]);
+  };
 
-  const candidateIdList = Array.from(candidateIds);
+  // Everything for one workspace: used when a workspace is opened. Single
+  // changes update the list they changed instead (audit RG-31).
+  const loadWorkspaceDetails = async (workspaceId: string): Promise<void> => {
+    shownWorkspaceIdRef.current = workspaceId;
+    const load = ++detailsLoadRef.current;
+    const changesAtStart = detailsChangeRef.current;
 
-  if (candidateIdList.length === 0) {
-    setCollaboratorOptions([]);
-    setSelectedCollaboratorId("");
-    return;
-  }
-
-  const { data: candidateProfiles, error: candidateProfileError } =
-    await supabase
-      .from("profiles")
-      .select(
-        "id, email, full_name, department, profile_pic_url, skills, interests",
-      )
-      .in("id", candidateIdList);
-
-  if (candidateProfileError) {
-    logDev("LOAD COLLABORATOR OPTIONS ERROR:", candidateProfileError);
-    setCollaboratorOptions([]);
-    setSelectedCollaboratorId("");
-    return;
-  }
-
-  setCollaboratorOptions((candidateProfiles || []) as Profile[]);
-  setSelectedCollaboratorId("");
-};
-
-  const loadWorkspaceDetails = async (workspaceId: string) => {
     const [
       taskResult,
       fileResult,
@@ -382,10 +435,17 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     if (updateResult.error)
       logDev("LOAD UPDATES ERROR:", updateResult.error);
 
+    const signedFiles = await withSignedUrls((fileResult.data || []) as WorkspaceFile[]);
+
+    if (!isShown(workspaceId) || load !== detailsLoadRef.current) return;
+
+    if (changesAtStart !== detailsChangeRef.current) {
+      await loadWorkspaceDetails(workspaceId);
+      return;
+    }
+
     setTasks((taskResult.data || []) as WorkspaceTask[]);
-    setWorkspaceFiles(
-      await withSignedUrls((fileResult.data || []) as WorkspaceFile[]),
-    );
+    setWorkspaceFiles(signedFiles);
     setMilestones((milestoneResult.data || []) as WorkspaceMilestone[]);
     setMeetings((meetingResult.data || []) as WorkspaceMeeting[]);
     setRecordings((recordingResult.data || []) as WorkspaceRecording[]);
@@ -425,6 +485,7 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
       setSelectedWorkspaceId(nextSelected);
       await loadWorkspaceDetails(nextSelected);
     } else {
+      shownWorkspaceIdRef.current = "";
       setSelectedWorkspaceId("");
       setTasks([]);
       setWorkspaceFiles([]);
@@ -438,45 +499,45 @@ const loadTeamAndCollaborators = async (workspaceId: string) => {
     }
   };
 
-const loadWorkspacesOnMount = useEffectEvent(() => loadWorkspaces());
+  const loadWorkspacesOnMount = useEffectEvent(() => loadWorkspaces());
 
-useEffect(() => {
-  let cancelled = false;
+  useEffect(() => {
+    let cancelled = false;
 
-  const load = async () => {
-    try {
-      const authUser = await getCurrentUserSafe();
+    const load = async () => {
+      try {
+        const authUser = await getCurrentUserSafe();
 
-      if (!authUser) {
-        router.push("/auth/login");
-        return;
+        if (!authUser) {
+          router.push("/auth/login");
+          return;
+        }
+
+        if (cancelled) return;
+
+        setUserId(authUser.id);
+
+        await loadWorkspacesOnMount();
+      } catch (error) {
+        if (isAuthLockError(error)) {
+          logDev("WORKSPACE AUTH LOCK ERROR:", error);
+          return;
+        }
+
+        logDev("WORKSPACE LOAD ERROR:", error);
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
+    };
 
-      if (cancelled) return;
+    load();
 
-      setUserId(authUser.id);
-
-      await loadWorkspacesOnMount();
-    } catch (error) {
-      if (isAuthLockError(error)) {
-        logDev("WORKSPACE AUTH LOCK ERROR:", error);
-        return;
-      }
-
-      logDev("WORKSPACE LOAD ERROR:", error);
-    } finally {
-      if (!cancelled) {
-        setLoading(false);
-      }
-    }
-  };
-
-  load();
-
-  return () => {
-    cancelled = true;
-  };
-}, [router]);
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   const handleSelectWorkspace = async (workspaceId: string) => {
     setSelectedWorkspaceId(workspaceId);
@@ -485,144 +546,8 @@ useEffect(() => {
     await loadWorkspaceDetails(workspaceId);
   };
 
-const ensureWorkspaceGroupConversation = async (
-  workspaceId: string,
-  title: string,
-  ownerId: string,
-) => {
-  const { data: existing, error: existingError } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq("conversation_type", "workspace_group")
-    .maybeSingle();
-
-  if (existingError) {
-    logDev("CHECK WORKSPACE GROUP CONVERSATION ERROR:", existingError);
-    return null;
-  }
-
-  if (existing?.id) {
-    await supabase.from("conversation_members").upsert(
-      {
-        conversation_id: existing.id,
-        user_id: ownerId,
-        role: "owner",
-        last_read_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "conversation_id,user_id",
-      },
-    );
-
-    return existing.id as string;
-  }
-
-  const { data: conversation, error } = await supabase
-    .from("conversations")
-    .insert({
-      participant_one_id: ownerId,
-      participant_two_id: ownerId,
-      conversation_type: "workspace_group",
-      title: `Workspace: ${title}`,
-      workspace_id: workspaceId,
-      created_by: ownerId,
-      last_message_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .select("id")
-    .single();
-
-  if (error || !conversation) {
-    logDev("CREATE WORKSPACE GROUP CONVERSATION ERROR:", error);
-    return null;
-  }
-
-  await supabase.from("conversation_members").upsert(
-    {
-      conversation_id: conversation.id,
-      user_id: ownerId,
-      role: "owner",
-      last_read_at: new Date().toISOString(),
-    },
-    {
-      onConflict: "conversation_id,user_id",
-    },
-  );
-
-  return conversation.id as string;
-};
-
- const addUserToWorkspaceGroupConversation = async (
-  workspaceId: string,
-  userIdToAdd: string,
-  role = "member",
-) => {
-  const { data: conversation, error } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq("conversation_type", "workspace_group")
-    .maybeSingle();
-
-  if (error) {
-    logDev("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
-    return;
-  }
-
-  if (!conversation?.id) {
-    logDev("No workspace group conversation found for:", workspaceId);
-    return;
-  }
-
-  const { error: memberError } = await supabase
-    .from("conversation_members")
-    .upsert(
-      {
-        conversation_id: conversation.id,
-        user_id: userIdToAdd,
-        role,
-        last_read_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "conversation_id,user_id",
-      },
-    );
-
-  if (memberError) {
-    logDev("ADD USER TO WORKSPACE GROUP CHAT ERROR:", memberError);
-  }
-};
-
-  const removeUserFromWorkspaceGroupConversation = async (
-  workspaceId: string,
-  userIdToRemove: string,
-) => {
-  const { data: conversation, error } = await supabase
-    .from("conversations")
-    .select("id")
-    .eq("workspace_id", workspaceId)
-    .eq("conversation_type", "workspace_group")
-    .maybeSingle();
-
-  if (error) {
-    logDev("FIND WORKSPACE GROUP CONVERSATION ERROR:", error);
-    return;
-  }
-
-  if (!conversation?.id) return;
-
-  const { error: removeError } = await supabase
-    .from("conversation_members")
-    .delete()
-    .eq("conversation_id", conversation.id)
-    .eq("user_id", userIdToRemove);
-
-  if (removeError) {
-    logDev("REMOVE USER FROM WORKSPACE GROUP CHAT ERROR:", removeError);
-  }
-};
-
+  // The workspace, its owner membership and (for a shared one) its group chat
+  // are created together by the database (audit RG-20).
   const handleCreateWorkspace = async () => {
     if (!userId) {
       notify("You must be logged in.", "error");
@@ -636,61 +561,35 @@ const ensureWorkspaceGroupConversation = async (
 
     setCreatingWorkspace(true);
 
-    const { data: workspaceData, error: workspaceError } = await supabase
-      .from("workspaces")
-      .insert({
-        owner_id: userId,
-        title: workspaceTitle.trim(),
-        description: workspaceDescription.trim() || null,
-        research_area: workspaceResearchArea.trim() || null,
-        due_date: workspaceDueDate || null,
-        workspace_type: workspaceType,
-        status: "active",
-      })
-      .select("id")
-      .single();
-
-    if (workspaceError || !workspaceData) {
-      logDev("CREATE WORKSPACE ERROR:", workspaceError);
-      notify(friendlyError(workspaceError, "Could not create workspace."), "error");
-      setCreatingWorkspace(false);
-      return;
-    }
-
-    const { error: memberError } = await supabase
-      .from("workspace_members")
-      .insert({
-        workspace_id: workspaceData.id,
-        user_id: userId,
-        role: "owner",
+    try {
+      const { data: newWorkspaceId, error } = await supabase.rpc("create_workspace", {
+        p_title: workspaceTitle.trim(),
+        p_description: workspaceDescription.trim() || null,
+        p_research_area: workspaceResearchArea.trim() || null,
+        p_due_date: workspaceDueDate || null,
+        p_workspace_type: workspaceType,
       });
 
-    if (memberError) {
-      logDev("CREATE WORKSPACE MEMBER ERROR:", memberError);
-      notify(
-        "The workspace was created, but you could not be added as its owner. Reload the page before creating it again, so it is not made twice.",
-        "error",
-      );
-    }
-    // If the new workspace is shared, automatically create workspace group chat.
-    if (workspaceType === "shared") {
-      await ensureWorkspaceGroupConversation(
-        workspaceData.id,
-        workspaceTitle.trim(),
-        userId,
-      );
-    }
-    setWorkspaceTitle("");
-    setWorkspaceDescription("");
-    setWorkspaceResearchArea("");
-    setWorkspaceDueDate("");
-    setWorkspaceType("personal");
+      if (error || !newWorkspaceId) {
+        logDev("CREATE WORKSPACE ERROR:", error);
+        notify(friendlyError(error, "Could not create workspace."), "error");
+        return;
+      }
 
-    await loadWorkspaces();
-    setSelectedWorkspaceId(workspaceData.id);
-    await loadWorkspaceDetails(workspaceData.id);
+      setWorkspaceTitle("");
+      setWorkspaceDescription("");
+      setWorkspaceResearchArea("");
+      setWorkspaceDueDate("");
+      setWorkspaceType("personal");
 
-    setCreatingWorkspace(false);
+      // Open the new workspace (one list load, one details load).
+      requestedWorkspaceIdRef.current = String(newWorkspaceId);
+      setActiveTab("overview");
+      setActiveMeeting(null);
+      await loadWorkspaces();
+    } finally {
+      setCreatingWorkspace(false);
+    }
   };
 
   const handleConvertToShared = async () => {
@@ -704,13 +603,11 @@ const ensureWorkspaceGroupConversation = async (
 
     if (!confirmed) return;
 
-    const { error } = await supabase
-      .from("workspaces")
-      .update({
-        workspace_type: "shared",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", selectedWorkspace.id);
+    const workspaceId = selectedWorkspace.id;
+
+    const { error } = await supabase.rpc("make_workspace_shared", {
+      p_workspace_id: workspaceId,
+    });
 
     if (error) {
       logDev("CONVERT WORKSPACE ERROR:", error);
@@ -718,14 +615,17 @@ const ensureWorkspaceGroupConversation = async (
       return;
     }
 
-     await ensureWorkspaceGroupConversation(
-      selectedWorkspace.id,
-      selectedWorkspace.title,
-      userId,
+    setWorkspaces((current) =>
+      current.map((workspace) =>
+        workspace.id === workspaceId
+          ? { ...workspace, workspace_type: "shared", updated_at: new Date().toISOString() }
+          : workspace,
+      ),
     );
-    await loadWorkspaces();
+    notify("The workspace is shared now. Its group chat is in Messages.", "success");
   };
 
+  // Membership and the group chat change together (audit RG-20).
   const handleAddWorkspaceMember = async () => {
     if (!selectedWorkspaceId || !selectedWorkspace) {
       notify("Select a workspace first.", "info");
@@ -766,29 +666,26 @@ const ensureWorkspaceGroupConversation = async (
 
     if (!confirmAdd) return;
 
+    const workspaceId = selectedWorkspaceId;
     setAddingMember(true);
 
-    const { error } = await supabase.from("workspace_members").insert({
-      workspace_id: selectedWorkspaceId,
-      user_id: memberIdToAdd,
-      role: "member",
-    });
+    try {
+      const { error } = await supabase.rpc("add_workspace_member", {
+        p_workspace_id: workspaceId,
+        p_user_id: memberIdToAdd,
+      });
 
-    if (error) {
-      logDev("ADD WORKSPACE MEMBER ERROR:", error);
-      notify(friendlyError(error, "Could not add the member."), "error");
+      if (error) {
+        logDev("ADD WORKSPACE MEMBER ERROR:", error);
+        notify(friendlyError(error, "Could not add the member."), "error");
+        return;
+      }
+
+      setSelectedCollaboratorId("");
+      await loadTeamAndCollaborators(workspaceId);
+    } finally {
       setAddingMember(false);
-      return;
     }
-    await addUserToWorkspaceGroupConversation(
-  selectedWorkspaceId,
-  memberIdToAdd,
-  "member",
-);
-
-    setSelectedCollaboratorId("");
-    await loadWorkspaceDetails(selectedWorkspaceId);
-    setAddingMember(false);
   };
 
   const handleRemoveWorkspaceMember = async (member: WorkspaceMember) => {
@@ -810,10 +707,11 @@ const ensureWorkspaceGroupConversation = async (
 
     if (!confirmRemove) return;
 
-    const { error } = await supabase
-      .from("workspace_members")
-      .delete()
-      .eq("id", member.id);
+    const workspaceId = selectedWorkspaceId;
+
+    const { error } = await supabase.rpc("remove_workspace_member", {
+      p_member_id: member.id,
+    });
 
     if (error) {
       logDev("REMOVE WORKSPACE MEMBER ERROR:", error);
@@ -821,12 +719,7 @@ const ensureWorkspaceGroupConversation = async (
       return;
     }
 
-await removeUserFromWorkspaceGroupConversation(
-  selectedWorkspaceId,
-  member.user_id,
-);
-
-    await loadWorkspaceDetails(selectedWorkspaceId);
+    await loadTeamAndCollaborators(workspaceId);
   };
 
   const handleAddTask = async () => {
@@ -840,54 +733,67 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const workspaceId = selectedWorkspaceId;
     setAddingTask(true);
 
-    const { error } = await supabase.from("workspace_tasks").insert({
-      workspace_id: selectedWorkspaceId,
-      title: taskTitle.trim(),
-      description: taskDescription.trim() || null,
-      status: "todo",
-      priority: taskPriority,
-      due_date: taskDueDate || null,
-      assigned_to: taskAssignedTo || null,
-      created_by: userId,
-    });
+    try {
+      const { data, error } = await supabase
+        .from("workspace_tasks")
+        .insert({
+          workspace_id: workspaceId,
+          title: taskTitle.trim(),
+          description: taskDescription.trim() || null,
+          status: "todo",
+          priority: taskPriority,
+          due_date: taskDueDate || null,
+          assigned_to: taskAssignedTo || null,
+          created_by: userId,
+        })
+        .select("*")
+        .single();
 
-    if (error) {
-      logDev("ADD TASK ERROR:", error);
-      notify(friendlyError(error, "Could not add the task."), "error");
+      if (error || !data) {
+        logDev("ADD TASK ERROR:", error);
+        notify(friendlyError(error, "Could not add the task."), "error");
+        return;
+      }
+
+      setTaskTitle("");
+      setTaskDescription("");
+      setTaskPriority("medium");
+      setTaskDueDate("");
+      setTaskAssignedTo("");
+
+      if (isShown(workspaceId)) {
+        noteLocalChange();
+        setTasks((current) => [data as WorkspaceTask, ...current]);
+      }
+    } finally {
       setAddingTask(false);
-      return;
     }
-
-    setTaskTitle("");
-    setTaskDescription("");
-    setTaskPriority("medium");
-    setTaskDueDate("");
-    setTaskAssignedTo("");
-
-    await loadWorkspaceDetails(selectedWorkspaceId);
-    setAddingTask(false);
   };
 
   const handleUpdateTaskStatus = async (taskId: string, nextStatus: string) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("workspace_tasks")
       .update({
         status: nextStatus,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", taskId);
+      .eq("id", taskId)
+      .select("*")
+      .single();
 
-    if (error) {
+    if (error || !data) {
       logDev("UPDATE TASK ERROR:", error);
       notify(friendlyError(error, "Could not update the task."), "error");
       return;
     }
 
-    if (selectedWorkspaceId) {
-      await loadWorkspaceDetails(selectedWorkspaceId);
-    }
+    noteLocalChange();
+    setTasks((current) =>
+      current.map((task) => (task.id === taskId ? (data as WorkspaceTask) : task)),
+    );
   };
 
   const handleUploadFiles = async () => {
@@ -907,54 +813,60 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const workspaceId = selectedWorkspaceId;
     setUploadingFile(true);
 
-    for (let i = 0; i < selectedFiles.length; i++) {
-      const file = selectedFiles[i];
-      const ext = getFileExt(file.name);
-      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const storagePath = `${selectedWorkspaceId}/${userId}/${Date.now()}-${i}-${safeName}`;
+    try {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const ext = getFileExt(file.name);
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const storagePath = `${workspaceId}/${userId}/${Date.now()}-${i}-${safeName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from(WORKSPACE_FILES_BUCKET)
-        .upload(storagePath, asUploadBody(file), {
-          cacheControl: "3600",
-          upsert: false,
-        });
+        const { error: uploadError } = await supabase.storage
+          .from(WORKSPACE_FILES_BUCKET)
+          .upload(storagePath, asUploadBody(file), {
+            cacheControl: "3600",
+            upsert: false,
+          });
 
-      if (uploadError) {
-        logDev("WORKSPACE FILE UPLOAD ERROR:", uploadError);
-        notify(friendlyError(uploadError, "Could not upload the file."), "error");
-        setUploadingFile(false);
-        return;
+        if (uploadError) {
+          logDev("WORKSPACE FILE UPLOAD ERROR:", uploadError);
+          notify(friendlyError(uploadError, "Could not upload the file."), "error");
+          return;
+        }
+
+        // No permanent link is stored for private files; one is signed on load.
+        const { error: insertError } = await supabase
+          .from("workspace_files")
+          .insert({
+            workspace_id: workspaceId,
+            uploaded_by: userId,
+            file_url: null,
+            storage_path: storagePath,
+            original_name: file.name,
+            mime_type: file.type || null,
+            file_ext: ext,
+            file_size: file.size,
+            file_category: getFileCategory(file),
+          });
+
+        if (insertError) {
+          logDev("WORKSPACE FILE INSERT ERROR:", insertError);
+          notify(friendlyError(insertError, "Could not save the file."), "error");
+          // The upload has no entry: remove it again instead of leaving it behind.
+          await supabase.storage.from(WORKSPACE_FILES_BUCKET).remove([storagePath]);
+          return;
+        }
       }
 
-      // No permanent link is stored for private files; one is signed on load.
-      const { error: insertError } = await supabase
-        .from("workspace_files")
-        .insert({
-          workspace_id: selectedWorkspaceId,
-          uploaded_by: userId,
-          file_url: null,
-          storage_path: storagePath,
-          original_name: file.name,
-          mime_type: file.type || null,
-          file_ext: ext,
-          file_size: file.size,
-          file_category: getFileCategory(file),
-        });
-
-      if (insertError) {
-        logDev("WORKSPACE FILE INSERT ERROR:", insertError);
-        notify(friendlyError(insertError, "Could not save the file."), "error");
-        setUploadingFile(false);
-        return;
-      }
+      setSelectedFiles([]);
+    } finally {
+      // Show what was saved, also when a later file failed.
+      noteLocalChange();
+      await loadWorkspaceFiles(workspaceId);
+      setUploadingFile(false);
     }
-
-    setSelectedFiles([]);
-    await loadWorkspaceDetails(selectedWorkspaceId);
-    setUploadingFile(false);
   };
 
   const handleAddMilestone = async () => {
@@ -968,53 +880,68 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const workspaceId = selectedWorkspaceId;
     setSavingMilestone(true);
 
-    const { error } = await supabase.from("workspace_milestones").insert({
-      workspace_id: selectedWorkspaceId,
-      created_by: userId,
-      title: milestoneTitle.trim(),
-      description: milestoneDescription.trim() || null,
-      due_date: milestoneDueDate || null,
-      status: "planned",
-    });
+    try {
+      const { data, error } = await supabase
+        .from("workspace_milestones")
+        .insert({
+          workspace_id: workspaceId,
+          created_by: userId,
+          title: milestoneTitle.trim(),
+          description: milestoneDescription.trim() || null,
+          due_date: milestoneDueDate || null,
+          status: "planned",
+        })
+        .select("*")
+        .single();
 
-    if (error) {
-      logDev("ADD MILESTONE ERROR:", error);
-      notify(friendlyError(error, "Could not add the milestone."), "error");
+      if (error || !data) {
+        logDev("ADD MILESTONE ERROR:", error);
+        notify(friendlyError(error, "Could not add the milestone."), "error");
+        return;
+      }
+
+      setMilestoneTitle("");
+      setMilestoneDescription("");
+      setMilestoneDueDate("");
+
+      if (isShown(workspaceId)) {
+        noteLocalChange();
+        setMilestones((current) => [data as WorkspaceMilestone, ...current]);
+      }
+    } finally {
       setSavingMilestone(false);
-      return;
     }
-
-    setMilestoneTitle("");
-    setMilestoneDescription("");
-    setMilestoneDueDate("");
-
-    await loadWorkspaceDetails(selectedWorkspaceId);
-    setSavingMilestone(false);
   };
 
   const handleUpdateMilestoneStatus = async (
     milestoneId: string,
     nextStatus: string,
   ) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from("workspace_milestones")
       .update({
         status: nextStatus,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", milestoneId);
+      .eq("id", milestoneId)
+      .select("*")
+      .single();
 
-    if (error) {
+    if (error || !data) {
       logDev("UPDATE MILESTONE ERROR:", error);
       notify(friendlyError(error, "Could not update the milestone."), "error");
       return;
     }
 
-    if (selectedWorkspaceId) {
-      await loadWorkspaceDetails(selectedWorkspaceId);
-    }
+    noteLocalChange();
+    setMilestones((current) =>
+      current.map((milestone) =>
+        milestone.id === milestoneId ? (data as WorkspaceMilestone) : milestone,
+      ),
+    );
   };
 
   const handleCreateMeeting = async () => {
@@ -1033,32 +960,28 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const workspaceId = selectedWorkspaceId;
     setSavingMeeting(true);
 
     try {
-      const roomName =
-        `researchgram-${selectedWorkspaceId}-${Date.now()}`.replace(
-          /[^a-zA-Z0-9]/g,
-          "",
-        );
+      const roomName = randomRoomName();
 
-      const meetingUrl = `https://meet.jit.si/${roomName}`;
-
+      // The saved row carries the room the database chose.
       const { data: createdMeeting, error } = await supabase
         .from("workspace_meetings")
         .insert({
-          workspace_id: selectedWorkspaceId,
+          workspace_id: workspaceId,
           created_by: userId,
           title: meetingTitle.trim(),
           provider: "jitsi",
           room_name: roomName,
-          meeting_url: meetingUrl,
+          meeting_url: `https://meet.jit.si/${roomName}`,
           starts_at: meetingStart ? new Date(meetingStart).toISOString() : null,
         })
         .select("*")
         .single();
 
-      if (error) {
+      if (error || !createdMeeting) {
         logDev("CREATE MEETING ERROR:", error);
         notify(friendlyError(error, "Could not create the meeting."), "error");
         return;
@@ -1067,9 +990,12 @@ await removeUserFromWorkspaceGroupConversation(
       setMeetingTitle("");
       setMeetingStart("");
 
-      setMeetings((prev) => [createdMeeting as WorkspaceMeeting, ...prev]);
-      setActiveMeeting(createdMeeting as WorkspaceMeeting);
-      setActiveTab("meetings");
+      if (isShown(workspaceId)) {
+        noteLocalChange();
+        setMeetings((prev) => [createdMeeting as WorkspaceMeeting, ...prev]);
+        setActiveMeeting(createdMeeting as WorkspaceMeeting);
+        setActiveTab("meetings");
+      }
     } catch (error) {
       logDev("CREATE MEETING UNKNOWN ERROR:", error);
       notify(friendlyError(error, "Could not create the meeting."), "error");
@@ -1089,26 +1015,36 @@ await removeUserFromWorkspaceGroupConversation(
       return;
     }
 
+    const workspaceId = selectedWorkspaceId;
     setSavingUpdate(true);
 
-    const { error } = await supabase.from("workspace_updates").insert({
-      workspace_id: selectedWorkspaceId,
-      author_id: userId,
-      update_type: "note",
-      body: updateText.trim(),
-    });
+    try {
+      const { data, error } = await supabase
+        .from("workspace_updates")
+        .insert({
+          workspace_id: workspaceId,
+          author_id: userId,
+          update_type: "note",
+          body: updateText.trim(),
+        })
+        .select("*")
+        .single();
 
-    if (error) {
-      logDev("ADD UPDATE ERROR:", error);
-      notify(friendlyError(error, "Could not post the update."), "error");
+      if (error || !data) {
+        logDev("ADD UPDATE ERROR:", error);
+        notify(friendlyError(error, "Could not post the update."), "error");
+        return;
+      }
+
+      setUpdateText("");
+
+      if (isShown(workspaceId)) {
+        noteLocalChange();
+        setUpdates((current) => [data as WorkspaceUpdate, ...current]);
+      }
+    } finally {
       setSavingUpdate(false);
-      return;
     }
-
-    setUpdateText("");
-
-    await loadWorkspaceDetails(selectedWorkspaceId);
-    setSavingUpdate(false);
   };
 
   return (
@@ -1187,8 +1123,11 @@ await removeUserFromWorkspaceGroupConversation(
       handleUpdateMilestoneStatus={handleUpdateMilestoneStatus}
       handleCreateMeeting={handleCreateMeeting}
       handleAddUpdate={handleAddUpdate}
+      // A recording was saved: only the recordings list changes.
       handleReloadCurrentWorkspace={() =>
-        selectedWorkspaceId ? loadWorkspaceDetails(selectedWorkspaceId) : null
+        selectedWorkspaceId
+          ? (noteLocalChange(), loadWorkspaceRecordings(selectedWorkspaceId))
+          : null
       }
     />
   );

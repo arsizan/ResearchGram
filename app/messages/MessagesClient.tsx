@@ -9,11 +9,14 @@ import MessagesUI, {
   type ConversationDivision,
   type ConversationView,
   type MessageRow,
+  type PendingFile,
   type ProfileLite,
   type TypingUser,
 } from "./UI";
 import { logDev } from "@/lib/log";
-import { friendlyError, notify } from "@/lib/feedback";
+import { friendlyError, isUnclearFailure, notify } from "@/lib/feedback";
+import { asUploadBody, chatUploadProblem, IMAGE_TYPES } from "@/lib/uploadRules";
+import { useVoiceRecorder } from "./useVoiceRecorder";
 
 type ConversationRow = {
   id: string;
@@ -57,6 +60,29 @@ function getDisplayName(profile: ProfileLite | null | undefined) {
 const CONVERSATION_PAGE_SIZE = 10;
 const MESSAGE_PAGE_SIZE = 30;
 
+// Files and voice messages in chats: a private bucket, readable only by the
+// people in the chat, through short-lived signed links.
+const CHAT_BUCKET = "chat-attachments";
+const SIGNED_URL_SECONDS = 60 * 60;
+// A signed link is reused until 5 minutes before it expires, so a file or
+// voice message on screen keeps the same link (a new link would restart a
+// voice message that is playing). One that expires on screen is renewed when
+// it fails to load (refreshAttachmentUrl).
+const SIGNED_URL_REUSE_MS = (SIGNED_URL_SECONDS - 5 * 60) * 1000;
+
+const MESSAGE_FIELDS =
+  "id, conversation_id, sender_id, body, read_at, is_deleted, created_at, attachment_path, attachment_name, attachment_type, attachment_size, attachment_kind, attachment_duration_seconds";
+
+function safeFileName(name: string) {
+  return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-120) || "file";
+}
+
+function voiceExtension(mimeType: string) {
+  if (mimeType === "audio/mp4") return "m4a";
+  if (mimeType === "audio/ogg") return "ogg";
+  return "webm";
+}
+
 // One row per chat I am in, from the my_conversation_summaries() database
 // function: unread count and last message (audit RG-18, RG-19).
 type ConversationSummaryRow = {
@@ -67,6 +93,7 @@ type ConversationSummaryRow = {
   last_message_sender_id: string | null;
   last_message_read_at: string | null;
   last_message_created_at: string | null;
+  muted?: boolean | null;
 };
 
 function isSupabaseLockError(
@@ -119,13 +146,37 @@ export default function MessagesClient() {
   const loadingOlderMessagesRef = useRef(false);
 
   const [messageText, setMessageText] = useState("");
-  const [sending, setSending] = useState(false);
+  // Chats with a message still being sent. Sending is per chat: a slow upload
+  // in one chat does not block the others.
+  const [sendingConversationIds, setSendingConversationIds] = useState<string[]>([]);
+  const sending = sendingConversationIds.includes(selectedConversationId);
 
   const [connectedProfiles, setConnectedProfiles] = useState<ProfileLite[]>([]);
   const [selectedDirectUserId, setSelectedDirectUserId] = useState("");
   const [creatingDirect, setCreatingDirect] = useState(false);
 
   const [typingUsers, setTypingUsers] = useState<TypingUser[]>([]);
+  // "… is typing" belongs to the open chat: cleared when another chat opens
+  // (set while rendering instead of in an effect, so there is no extra render).
+  const [typingShownFor, setTypingShownFor] = useState(selectedConversationId);
+  if (typingShownFor !== selectedConversationId) {
+    setTypingShownFor(selectedConversationId);
+    setTypingUsers([]);
+  }
+
+  // The file or voice message waiting to be sent with the next message.
+  const [pendingFile, setPendingFile] = useState<PendingFile | null>(null);
+  const pendingFileRef = useRef<PendingFile | null>(null);
+  const reportVoiceProblem = useCallback((message: string) => notify(message, "error"), []);
+  const voice = useVoiceRecorder(reportVoiceProblem);
+  const { cancel: cancelVoice, discard: discardVoice } = voice;
+  const voiceNoteRef = useRef(voice.note);
+  useEffect(() => {
+    voiceNoteRef.current = voice.note;
+  }, [voice.note]);
+
+  // Signed links of attachments, reused while they are still valid (RG-31).
+  const signedUrlCacheRef = useRef(new Map<string, { url: string; at: number }>());
 
   const typingChannelRef = useRef<RealtimeChannel | null>(null);
   const typingTimeoutsRef = useRef<
@@ -142,6 +193,11 @@ export default function MessagesClient() {
   const loadConversationsRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Debounce ref so rapid real-time events collapse into a single reload
   const loadConversationsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // The latest loadConversations, for its own lock-error retry (a function
+  // cannot list itself as a dependency).
+  const loadConversationsRef = useRef<(currentUserId: string, keepSelected?: boolean) => Promise<void>>(
+    async () => {},
+  );
 
   // Prevents setState after unmount, which otherwise leaves a blank page on fast navigation.
   const isMountedRef = useRef(true);
@@ -159,6 +215,102 @@ export default function MessagesClient() {
         loadConversationsDebounceRef.current = null;
       }
     };
+  }, []);
+
+  const replacePendingFile = useCallback((next: PendingFile | null) => {
+    if (pendingFileRef.current?.previewUrl) {
+      URL.revokeObjectURL(pendingFileRef.current.previewUrl);
+    }
+    pendingFileRef.current = next;
+    setPendingFile(next);
+  }, []);
+
+  // An attachment belongs to the chat it was chosen in: switching chats drops it.
+  const resetComposerAttachments = useCallback(() => {
+    replacePendingFile(null);
+    cancelVoice();
+    discardVoice();
+  }, [replacePendingFile, cancelVoice, discardVoice]);
+
+  // Every change of the open chat goes through here (a click, a tab, a new
+  // chat, the list reloading), so a chosen file and a recording, finished or
+  // still running, always stay behind with the chat they were made in.
+  const openConversation = useCallback(
+    (nextId: string) => {
+      if (nextId !== selectedConversationIdRef.current) resetComposerAttachments();
+      selectedConversationIdRef.current = nextId;
+      setSelectedConversationId(nextId);
+    },
+    [resetComposerAttachments],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pendingFileRef.current?.previewUrl) {
+        URL.revokeObjectURL(pendingFileRef.current.previewUrl);
+      }
+    };
+  }, []);
+
+  // Adds signed links to messages that carry a file or voice message.
+  const withAttachmentUrls = useCallback(async (rows: MessageRow[]) => {
+    const now = Date.now();
+    const cache = signedUrlCacheRef.current;
+    const missing = Array.from(
+      new Set(
+        rows
+          .map((row) => row.attachment_path)
+          .filter((path): path is string => {
+            if (!path) return false;
+            const cached = cache.get(path);
+            return !cached || now - cached.at > SIGNED_URL_REUSE_MS;
+          }),
+      ),
+    );
+
+    if (missing.length > 0) {
+      const { data, error } = await supabase.storage
+        .from(CHAT_BUCKET)
+        .createSignedUrls(missing, SIGNED_URL_SECONDS);
+
+      if (error) logDev("CHAT ATTACHMENT LINK ERROR:", error);
+
+      (data || []).forEach((item) => {
+        if (item.path && item.signedUrl) cache.set(item.path, { url: item.signedUrl, at: now });
+      });
+    }
+
+    return rows.map((row) =>
+      row.attachment_path
+        ? { ...row, attachment_url: cache.get(row.attachment_path)?.url ?? null }
+        : row,
+    );
+  }, []);
+
+  // A picture or voice message whose link stopped working while on screen
+  // (it expired): get a new link, at most once every few minutes per file.
+  const renewedLinksRef = useRef(new Map<string, number>());
+  const refreshAttachmentUrl = useCallback(async (path: string) => {
+    const now = Date.now();
+    if (now - (renewedLinksRef.current.get(path) || 0) < 5 * 60 * 1000) return;
+    renewedLinksRef.current.set(path, now);
+
+    const { data, error } = await supabase.storage
+      .from(CHAT_BUCKET)
+      .createSignedUrl(path, SIGNED_URL_SECONDS);
+
+    if (error || !data?.signedUrl) {
+      logDev("CHAT ATTACHMENT LINK ERROR:", error);
+      return;
+    }
+
+    signedUrlCacheRef.current.set(path, { url: data.signedUrl, at: now });
+    if (!isMountedRef.current) return;
+    setMessages((current) =>
+      current.map((row) =>
+        row.attachment_path === path ? { ...row, attachment_url: data.signedUrl } : row,
+      ),
+    );
   }, []);
 
   const selectedConversation = useMemo(
@@ -205,11 +357,9 @@ export default function MessagesClient() {
       const firstInDivision = conversations.find(
         (c) => c.conversation_type === division,
       );
-      const nextId = firstInDivision?.id || "";
-      selectedConversationIdRef.current = nextId;
-      setSelectedConversationId(nextId);
+      openConversation(firstInDivision?.id || "");
     },
-    [conversations],
+    [conversations, openConversation],
   );
 
   const loadConnectedProfiles = useCallback(async (currentUserId: string) => {
@@ -341,7 +491,7 @@ export default function MessagesClient() {
               loadConversationsRetryRef.current = setTimeout(() => {
                 loadConversationsRetryRef.current = null;
                 if (isMountedRef.current) {
-                  loadConversations(currentUserId, keepSelected);
+                  void loadConversationsRef.current(currentUserId, keepSelected);
                 }
               }, 600);
             }
@@ -359,8 +509,7 @@ export default function MessagesClient() {
         if (conversationIds.length === 0) {
           if (isMountedRef.current) {
             setConversations([]);
-            setSelectedConversationId("");
-            selectedConversationIdRef.current = "";
+            openConversation("");
           }
           return;
         }
@@ -391,8 +540,7 @@ export default function MessagesClient() {
         if (selectedConversationIds.length === 0) {
           if (isMountedRef.current) {
             setConversations([]);
-            setSelectedConversationId("");
-            selectedConversationIdRef.current = "";
+            openConversation("");
           }
           return;
         }
@@ -547,6 +695,11 @@ export default function MessagesClient() {
               content,
               last_message: lastMessageMap[conversation.id] || null,
               unread_count: unreadMap[conversation.id] || 0,
+              muted: Boolean(
+                myMemberships.find(
+                  (membership) => membership.conversation_id === conversation.id,
+                )?.muted,
+              ),
             };
           },
         );
@@ -579,8 +732,7 @@ export default function MessagesClient() {
                 CONVERSATION_PAGE_SIZE,
             ),
           );
-          selectedConversationIdRef.current = requested.id;
-          setSelectedConversationId(requested.id);
+          openConversation(requested.id);
           return;
         }
 
@@ -607,17 +759,18 @@ export default function MessagesClient() {
               conversation.conversation_type === currentDivision,
           ) || null;
 
-        const nextId = next?.id || "";
-
-        selectedConversationIdRef.current = nextId;
-        setSelectedConversationId(nextId);
+        openConversation(next?.id || "");
       } finally {
         // Always release the in-flight guard, including on the early returns above.
         loadConversationsInFlightRef.current = false;
       }
     },
-    [],
+    [openConversation],
   );
+
+  useEffect(() => {
+    loadConversationsRef.current = loadConversations;
+  }, [loadConversations]);
 
   const loadMessages = useCallback(
     async (
@@ -642,13 +795,14 @@ export default function MessagesClient() {
       // One extra row tells us whether anything older exists.
       const { data, error } = await supabase
         .from("messages")
-        .select(
-          "id, conversation_id, sender_id, body, read_at, is_deleted, created_at",
-        )
+        .select(MESSAGE_FIELDS)
         .eq("conversation_id", conversationId)
         .eq("is_deleted", false)
         .order("created_at", { ascending: false })
         .limit(limit + 1);
+
+      const rows = (data || []) as MessageRow[];
+      const safeMessages = error ? [] : await withAttachmentUrls(rows.slice(0, limit).reverse());
 
       // An older reply, or one for a chat that is no longer open, must not
       // replace what is on screen.
@@ -668,9 +822,6 @@ export default function MessagesClient() {
         return;
       }
 
-      const rows = (data || []) as MessageRow[];
-      const safeMessages = rows.slice(0, limit).reverse();
-
       if (isCurrent) {
         shownMessagesRequestRef.current[conversationId] = requestId;
         if (messagesConversationIdRef.current !== conversationId) {
@@ -683,7 +834,7 @@ export default function MessagesClient() {
 
       await markConversationRead(conversationId, currentUserId);
     },
-    [markConversationRead],
+    [markConversationRead, withAttachmentUrls],
   );
 
   const handleLoadOlderMessages = async () => {
@@ -857,8 +1008,6 @@ export default function MessagesClient() {
   useEffect(() => {
     if (!selectedConversationId || !userId) return;
 
-    setTypingUsers([]);
-
     if (typingChannelRef.current) {
       supabase.removeChannel(typingChannelRef.current);
     }
@@ -931,69 +1080,224 @@ export default function MessagesClient() {
   };
 
   const handleSelectConversation = async (conversationId: string) => {
-    selectedConversationIdRef.current = conversationId;
-    setSelectedConversationId(conversationId);
-    setTypingUsers([]);
+    openConversation(conversationId);
   };
 
+  const handlePickAttachment = (file: File | null) => {
+    if (!file) return;
+
+    const problem = chatUploadProblem(file);
+    if (problem) {
+      notify(problem, "error");
+      return;
+    }
+
+    // One attachment per message.
+    cancelVoice();
+    discardVoice();
+
+    const isImage = IMAGE_TYPES.includes(file.type);
+    replacePendingFile({
+      file,
+      kind: isImage ? "image" : "file",
+      previewUrl: isImage ? URL.createObjectURL(file) : "",
+    });
+  };
+
+  // One attachment per message: a chosen file is dropped once the recording
+  // has really started (not when the microphone is refused).
+  const startVoice = voice.start;
+  const handleStartVoice = async () => {
+    if (await startVoice()) replacePendingFile(null);
+  };
+
+  const handleToggleMute = async (conversationId: string) => {
+    const conversation = conversations.find((item) => item.id === conversationId);
+    if (!conversation || !userId) return;
+
+    const nextMuted = !conversation.muted;
+    const setMuted = (muted: boolean) =>
+      setConversations((current) =>
+        current.map((item) => (item.id === conversationId ? { ...item, muted } : item)),
+      );
+
+    setMuted(nextMuted);
+
+    const { error } = await supabase
+      .from("conversation_members")
+      .update({ muted: nextMuted })
+      .eq("conversation_id", conversationId)
+      .eq("user_id", userId);
+
+    if (error) {
+      logDev("MUTE CONVERSATION ERROR:", error);
+      setMuted(!nextMuted);
+      notify(friendlyError(error, "Could not change the chat's notifications."), "error");
+      return;
+    }
+
+    notify(
+      nextMuted
+        ? "Chat muted. Its new messages no longer count in your unread badge."
+        : "Chat unmuted.",
+      "success",
+    );
+    window.dispatchEvent(new Event("researchgram:refresh-nav-counts"));
+  };
+
+  // Text, a file, a voice message, or text with one of them. The chat moves
+  // to the top by itself: the database does that when the message is saved
+  // (audit RG-20).
   const handleSendMessage = async () => {
-    if (!selectedConversationId || !userId) {
+    const conversationId = selectedConversationId;
+
+    if (!conversationId || !userId) {
       notify("Select a conversation first.", "info");
       return;
     }
 
-    const body = messageText.trim();
+    if (sendingConversationIds.includes(conversationId)) return;
 
-    if (!body) return;
+    if (voice.recording || voice.starting) {
+      notify("Stop the recording first.", "info");
+      return;
+    }
 
-    const tempMessage: MessageRow = {
-      id: `temp-${Date.now()}`,
-      conversation_id: selectedConversationId,
-      sender_id: userId,
-      body,
-      read_at: null,
-      is_deleted: false,
-      created_at: new Date().toISOString(),
-    };
+    const text = messageText.trim();
+    const fileToSend = pendingFile;
+    const voiceToSend = voice.note;
 
-    setMessages((prev) => [...prev, tempMessage]);
+    if (!text && !fileToSend && !voiceToSend) return;
+
+    // A text-only message appears at once, as before.
+    const tempMessage: MessageRow | null =
+      fileToSend || voiceToSend
+        ? null
+        : {
+            id: `temp-${Date.now()}`,
+            conversation_id: conversationId,
+            sender_id: userId,
+            body: text,
+            read_at: null,
+            is_deleted: false,
+            created_at: new Date().toISOString(),
+          };
+
+    if (tempMessage) setMessages((prev) => [...prev, tempMessage]);
     setMessageText("");
-    setSending(true);
+    setSendingConversationIds((ids) => [...ids, conversationId]);
+
+    let uploadedPath = "";
+    let failure: unknown = null;
 
     try {
-      const { error } = await supabase.from("messages").insert({
-        conversation_id: selectedConversationId,
-        sender_id: userId,
-        body,
-        message_text: body,
-        is_deleted: false,
-      });
+      let attachment: Record<string, string | number> = {};
 
-      if (error) {
-        logDev("SEND MESSAGE ERROR:", error);
-        notify(friendlyError(error, "Could not send the message."), "error");
+      if (fileToSend || voiceToSend) {
+        const stamp = Date.now();
 
-        setMessages((prev) =>
-          prev.filter((message) => message.id !== tempMessage.id),
-        );
+        if (fileToSend) {
+          const uploadBody = asUploadBody(fileToSend.file, { allowAudio: true });
+          const path = `${conversationId}/${userId}/${stamp}-${safeFileName(fileToSend.file.name)}`;
+          const { error: uploadError } = await supabase.storage
+            .from(CHAT_BUCKET)
+            .upload(path, uploadBody, { cacheControl: "3600", upsert: false });
 
-        setMessageText(body);
-        return;
+          if (uploadError) throw uploadError;
+          uploadedPath = path;
+
+          attachment = {
+            attachment_path: path,
+            attachment_name: fileToSend.file.name.slice(0, 255) || "file",
+            attachment_type: uploadBody.type || "application/octet-stream",
+            attachment_size: fileToSend.file.size,
+            attachment_kind: fileToSend.kind,
+          };
+        } else if (voiceToSend) {
+          const path = `${conversationId}/${userId}/${stamp}-voice.${voiceExtension(voiceToSend.mimeType)}`;
+          const { error: uploadError } = await supabase.storage
+            .from(CHAT_BUCKET)
+            .upload(path, voiceToSend.blob, {
+              cacheControl: "3600",
+              upsert: false,
+              contentType: voiceToSend.mimeType,
+            });
+
+          if (uploadError) throw uploadError;
+          uploadedPath = path;
+
+          attachment = {
+            attachment_path: path,
+            attachment_name: "Voice message",
+            attachment_type: voiceToSend.mimeType,
+            attachment_size: voiceToSend.blob.size,
+            attachment_kind: "voice",
+            attachment_duration_seconds: voiceToSend.seconds,
+          };
+        }
       }
 
-      await supabase
-        .from("conversations")
-        .update({
-          last_message_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", selectedConversationId);
+      const { error } = await supabase.from("messages").insert({
+        conversation_id: conversationId,
+        sender_id: userId,
+        body: text || null,
+        message_text: text || null,
+        is_deleted: false,
+        ...attachment,
+      });
 
-      await loadMessages(selectedConversationId, userId);
-      await loadConversations(userId, true);
-    } finally {
-      setSending(false);
+      if (error) throw error;
+    } catch (error) {
+      failure = error;
     }
+
+    // No answer from the server: the message may have been saved anyway.
+    // Its file is only removed when it certainly was not.
+    let keepUpload = false;
+    if (failure && uploadedPath && isUnclearFailure(failure)) {
+      const { data: saved, error: checkError } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("attachment_path", uploadedPath)
+        .limit(1);
+
+      if (checkError) keepUpload = true;
+      else if (saved && saved.length > 0) failure = null;
+    }
+
+    setSendingConversationIds((ids) => ids.filter((id) => id !== conversationId));
+
+    if (failure) {
+      logDev("SEND MESSAGE ERROR:", failure);
+      const message = (failure as { message?: string } | null)?.message || "";
+      const code = String((failure as { code?: unknown } | null)?.code ?? "");
+      notify(
+        code === "42501" || message.includes("row-level security")
+          ? "You can no longer send messages in this chat."
+          : friendlyError(failure, "Could not send the message."),
+        "error",
+      );
+
+      if (tempMessage) {
+        setMessages((prev) => prev.filter((row) => row.id !== tempMessage.id));
+      }
+      // The text comes back only into the same chat, and only into an empty box.
+      if (selectedConversationIdRef.current === conversationId) {
+        setMessageText((current) => (current.trim() ? current : text));
+      }
+
+      if (uploadedPath && !keepUpload) {
+        await supabase.storage.from(CHAT_BUCKET).remove([uploadedPath]);
+      }
+      return;
+    }
+
+    // Sent: clear the attachment, unless another one was chosen meanwhile.
+    if (fileToSend && pendingFileRef.current === fileToSend) replacePendingFile(null);
+    if (voiceToSend && voiceNoteRef.current === voiceToSend) discardVoice();
+
+    await loadMessages(conversationId, userId);
+    await loadConversations(userId, true);
   };
 
   const handleCreateDirectChat = async () => {
@@ -1015,58 +1319,22 @@ export default function MessagesClient() {
     if (existing) {
       activeDivisionRef.current = "direct";
       setActiveDivision("direct");
-      selectedConversationIdRef.current = existing.id;
-      setSelectedConversationId(existing.id);
+      openConversation(existing.id);
       setSelectedDirectUserId("");
       return;
     }
 
     setCreatingDirect(true);
 
-    const otherProfile = connectedProfiles.find(
-      (profile) => profile.id === selectedDirectUserId,
-    );
+    // The database finds the existing chat or starts one with both people in
+    // it, in one step (audit RG-20).
+    const { data: conversationId, error } = await supabase.rpc("start_direct_conversation", {
+      p_other_user: selectedDirectUserId,
+    });
 
-    const { data: conversation, error } = await supabase
-      .from("conversations")
-      .insert({
-        participant_one_id: userId,
-        participant_two_id: selectedDirectUserId,
-        conversation_type: "direct",
-        title: getProfileNameForTitle(otherProfile),
-        created_by: userId,
-        last_message_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (error || !conversation) {
-      logDev("CREATE DIRECT CONVERSATION ERROR:", error);
+    if (error || !conversationId) {
+      logDev("START DIRECT CONVERSATION ERROR:", error);
       notify(friendlyError(error, "Could not create direct chat."), "error");
-      setCreatingDirect(false);
-      return;
-    }
-
-    const { error: memberError } = await supabase
-      .from("conversation_members")
-      .insert([
-        {
-          conversation_id: conversation.id,
-          user_id: userId,
-          role: "member",
-          last_read_at: new Date().toISOString(),
-        },
-        {
-          conversation_id: conversation.id,
-          user_id: selectedDirectUserId,
-          role: "member",
-          last_read_at: new Date().toISOString(),
-        },
-      ]);
-
-    if (memberError) {
-      logDev("CREATE DIRECT MEMBERS ERROR:", memberError);
-      notify(friendlyError(memberError, "Could not start the chat."), "error");
       setCreatingDirect(false);
       return;
     }
@@ -1074,8 +1342,7 @@ export default function MessagesClient() {
     setSelectedDirectUserId("");
     activeDivisionRef.current = "direct";
     setActiveDivision("direct");
-    selectedConversationIdRef.current = conversation.id;
-    setSelectedConversationId(conversation.id);
+    openConversation(String(conversationId));
 
     await loadConversations(userId, true);
     setCreatingDirect(false);
@@ -1118,10 +1385,21 @@ export default function MessagesClient() {
       hasOlderMessages={hasOlderMessages}
       loadingOlderMessages={loadingOlderMessages}
       handleLoadOlderMessages={handleLoadOlderMessages}
+      pendingFile={pendingFile}
+      voiceRecording={voice.recording}
+      voiceStarting={voice.starting}
+      voiceSeconds={voice.seconds}
+      voiceNote={voice.note}
+      voiceLimitReached={voice.limitReached}
+      handlePickAttachment={handlePickAttachment}
+      handleRemoveAttachment={() => replacePendingFile(null)}
+      handleStartVoice={handleStartVoice}
+      handleStopVoice={voice.stop}
+      handleCancelVoice={voice.cancel}
+      handleDiscardVoice={discardVoice}
+      handleAttachmentLinkFailed={refreshAttachmentUrl}
+      handleToggleMute={handleToggleMute}
+      handleOpenProfile={(profileId) => router.push(`/researchers/${profileId}`)}
     />
   );
-}
-
-function getProfileNameForTitle(profile: ProfileLite | undefined) {
-  return profile?.full_name || profile?.email || "Direct chat";
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import type {
   AssistantAnswer,
@@ -86,6 +87,10 @@ function writeStoredTurns(turns: AssistantTurn[]) {
  * the same thing.
  */
 export default function ResearchAssistant() {
+  // On the Messages page the button sits above the message box, so it never
+  // covers the Send button.
+  const pathname = usePathname();
+  const aboveComposer = Boolean(pathname?.startsWith("/messages"));
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<AssistantTurn[]>(readStoredTurns);
@@ -336,7 +341,11 @@ export default function ResearchAssistant() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open the research assistant"
-        className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 lg:bottom-6 lg:right-6 z-[90] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:hover:scale-100"
+        className={`fixed ${
+          aboveComposer
+            ? "bottom-[calc(10rem+env(safe-area-inset-bottom))] lg:bottom-28"
+            : "bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-6"
+        } right-4 lg:right-6 z-[90] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:hover:scale-100`}
       >
         <Sparkles className="h-6 w-6" aria-hidden="true" />
       </button>

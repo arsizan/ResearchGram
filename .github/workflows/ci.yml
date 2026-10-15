@@ -43,6 +43,59 @@ jobs:
       - name: Build
         run: npm run build
 
+  db-tests:
+    name: Database tests (PGlite)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Every migration in supabase/migrations, applied to an in-memory
+      # Postgres, then the rules checked as each kind of user.
+      - name: Database tests
+        run: npm run test:db
+
+  e2e:
+    name: Browser tests (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Builds the app with a fake Supabase address (tests/e2e/serve.mjs) and
+      # runs tests/e2e/*.spec.mjs against it.
+      - name: Browser tests
+        run: npm run test:e2e
+
+      - name: Keep traces of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          retention-days: 7
+
   audit:
     name: Dependency audit
     runs-on: ubuntu-latest

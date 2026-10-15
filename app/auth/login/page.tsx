@@ -1,17 +1,48 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { safeNextPath, supabase } from "@/lib/supabase";
+import { getCurrentUserSafe } from "@/lib/authSafe";
 import { friendlyAuthError } from "@/lib/feedback";
 
+// Where to go after logging in: the page that sent the visitor here
+// (proxy.ts adds ?next=), or the profile.
+function nextPathFromUrl() {
+  if (typeof window === "undefined") return "/profile";
+  return safeNextPath(new URLSearchParams(window.location.search).get("next"));
+}
+
+// A full page load, not a client-side route change: while signed out, the
+// app's router may have remembered that this page redirects to the login
+// page (proxy.ts), and would bring the person straight back here.
+function goToNextPage() {
+  window.location.replace(nextPathFromUrl());
+}
+
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  // Already signed in (for example a session kept from before this update):
+  // go straight on instead of showing the form.
+  useEffect(() => {
+    let cancelled = false;
+
+    getCurrentUserSafe()
+      .then((user) => {
+        if (user && !cancelled) goToNextPage();
+      })
+      .catch(() => {
+        // Not signed in, or the check failed: the form stays.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // A real form: Enter submits, browsers and password managers can fill it,
   // and the error is shown next to it instead of in an alert (RG-27, RG-32).
@@ -27,6 +58,7 @@ export default function LoginPage() {
     }
 
     setLoading(true);
+    let leaving = false;
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
@@ -39,11 +71,13 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/profile");
+      leaving = true;
+      goToNextPage();
     } catch (error) {
       setErrorMessage(friendlyAuthError(error, "Could not log in. Please try again."));
     } finally {
-      setLoading(false);
+      // While the next page loads, the button keeps saying "Logging in...".
+      if (!leaving) setLoading(false);
     }
   };
 

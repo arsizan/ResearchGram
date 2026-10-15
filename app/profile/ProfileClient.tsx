@@ -4,12 +4,28 @@ import { useEffect, useState } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { friendlyError, notify } from "@/lib/feedback";
+import { confirmAction, friendlyError, notify } from "@/lib/feedback";
 import { logDev } from "@/lib/log";
 import { uploadProblem } from "@/lib/uploadRules";
 import ProfileUI from "./UI";
+import { ORCID_SIGN_IN_AVAILABLE, startOrcidSignIn } from "./orcid";
 
 const PROFILE_BUCKET = "profile-avatars";
+
+// Deleting many files: a few requests of this size each.
+const REMOVE_BATCH = 100;
+
+function downloadJson(data: unknown, fileName: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 export default function ProfileClient() {
   const router = useRouter();
@@ -36,6 +52,11 @@ const [externalCitationCount, setExternalCitationCount] = useState(0);
 const [externalHIndex, setExternalHIndex] = useState(0);
 const [externalMetricsSyncedAt, setExternalMetricsSyncedAt] = useState("");
 const [syncingMetrics, setSyncingMetrics] = useState(false);
+  const [orcidVerifiedAt, setOrcidVerifiedAt] = useState("");
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [downloadingData, setDownloadingData] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
 
   const [profilePicUrl, setProfilePicUrl] = useState("");
   const [coverPhotoUrl, setCoverPhotoUrl] = useState("");
@@ -109,7 +130,12 @@ if (profileData) {
   setExternalCitationCount(profileData.external_citation_count ?? 0);
   setExternalHIndex(profileData.external_h_index ?? 0);
   setExternalMetricsSyncedAt(profileData.external_metrics_synced_at ?? "");
+  setOrcidVerifiedAt(profileData.orcid_verified_at ?? "");
 }
+
+      // Admins get a link to the admin console.
+      const { data: adminFlag } = await supabase.rpc("is_admin");
+      if (!cancelled) setIsAdmin(adminFlag === true);
     } catch (error) {
       if (isAuthLockError(error)) {
         logDev("PROFILE AUTH LOCK ERROR:", error);
@@ -296,6 +322,7 @@ if (profileData) {
 
       notify("Profile saved!", "success");
       setEditMode(false);
+      await refreshOrcidVerification();
     } catch (error) {
       logDev("SAVE PROFILE ERROR:", error);
       notify(friendlyError(error, "Could not save your profile."), "error");
@@ -344,8 +371,12 @@ if (profileData) {
         synced_at: string | null;
       }[])[0];
 
+      // No row: OpenAlex has no author profile for this iD, or did not answer.
       if (!synced) {
-        notify("Could not sync research metrics.", "error");
+        notify(
+          "Could not sync: OpenAlex has no author profile for this ORCID iD, or did not answer. Try again in a minute.",
+          "error",
+        );
         return;
       }
 
@@ -356,11 +387,102 @@ if (profileData) {
       setExternalMetricsSyncedAt(synced.synced_at ?? "");
 
       notify("Research metrics synced successfully.", "success");
+      await refreshOrcidVerification();
     } catch (error) {
       logDev("SYNC EXTERNAL METRICS ERROR:", error);
       notify(friendlyError(error, "Could not sync research metrics."), "error");
     } finally {
       setSyncingMetrics(false);
+    }
+  };
+
+  // Changing the iD (in the form or by syncing another one) removes the
+  // verification in the database; show what is stored now.
+  const refreshOrcidVerification = async () => {
+    if (!userId) return;
+    const { data } = await supabase
+      .from("profiles")
+      .select("orcid_verified_at")
+      .eq("id", userId)
+      .maybeSingle();
+    setOrcidVerifiedAt((data?.orcid_verified_at as string | null) ?? "");
+  };
+
+  // ORCID sign-in proves the iD is yours; the database checks it with ORCID.
+  const handleVerifyOrcid = () => {
+    if (!ORCID_SIGN_IN_AVAILABLE) return;
+    startOrcidSignIn();
+  };
+
+  // Everything stored about you, as one JSON file (data portability).
+  const handleDownloadData = async () => {
+    setDownloadingData(true);
+    try {
+      const { data, error } = await supabase.rpc("export_my_data");
+
+      if (error || !data) {
+        logDev("EXPORT DATA ERROR:", error);
+        notify(friendlyError(error, "Could not prepare your data."), "error");
+        return;
+      }
+
+      const day = new Date().toISOString().slice(0, 10);
+      downloadJson(data, `researchgram-data-${day}.json`);
+      notify("Your data was downloaded as a JSON file.", "success");
+    } finally {
+      setDownloadingData(false);
+    }
+  };
+
+  // Deletes the files first (the database cannot), then the account and
+  // everything that belongs to it, in one database call.
+  const handleDeleteAccount = async (typedConfirmation: string) => {
+    if (typedConfirmation.trim() !== "DELETE") {
+      notify("Type DELETE in capital letters to confirm.", "info");
+      return;
+    }
+
+    const confirmed = await confirmAction({
+      title: "Delete your account permanently?",
+      message:
+        "Your profile, posts, comments, messages, files and the workspaces you own are deleted for good. This cannot be undone.",
+      confirmLabel: "Delete my account",
+      tone: "danger",
+    });
+
+    if (!confirmed) return;
+
+    setDeletingAccount(true);
+
+    try {
+      const { data: files, error: listError } = await supabase.rpc("my_storage_objects");
+      if (listError) throw listError;
+
+      const pathsByBucket = new Map<string, string[]>();
+      ((files || []) as { bucket_id: string; name: string }[]).forEach((file) => {
+        pathsByBucket.set(file.bucket_id, [...(pathsByBucket.get(file.bucket_id) || []), file.name]);
+      });
+
+      for (const [bucket, paths] of pathsByBucket) {
+        for (let start = 0; start < paths.length; start += REMOVE_BATCH) {
+          const { error: removeError } = await supabase.storage
+            .from(bucket)
+            .remove(paths.slice(start, start + REMOVE_BATCH));
+          if (removeError) throw removeError;
+        }
+      }
+
+      const { error } = await supabase.rpc("delete_my_account", { p_confirm: "DELETE" });
+      if (error) throw error;
+
+      await supabase.auth.signOut({ scope: "local" });
+      notify("Your account was deleted. Thank you for using ResearchGram.", "success");
+      router.replace("/");
+    } catch (error) {
+      logDev("DELETE ACCOUNT ERROR:", error);
+      notify(friendlyError(error, "Could not delete your account. Please try again."), "error");
+    } finally {
+      setDeletingAccount(false);
     }
   };
 
@@ -390,6 +512,14 @@ externalCitationCount={externalCitationCount}
 externalHIndex={externalHIndex}
 externalMetricsSyncedAt={externalMetricsSyncedAt}
 syncingMetrics={syncingMetrics}
+orcidVerifiedAt={orcidVerifiedAt}
+orcidSignInAvailable={ORCID_SIGN_IN_AVAILABLE}
+handleVerifyOrcid={handleVerifyOrcid}
+isAdmin={isAdmin}
+downloadingData={downloadingData}
+deletingAccount={deletingAccount}
+handleDownloadData={handleDownloadData}
+handleDeleteAccount={handleDeleteAccount}
 handleSyncExternalMetrics={handleSyncExternalMetrics}
 setOrcidId={setOrcidId}
 setGoogleScholarUrl={setGoogleScholarUrl}

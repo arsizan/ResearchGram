@@ -38,14 +38,33 @@ export default function ResetPasswordPage() {
         await new Promise((resolve) => setTimeout(resolve, 50))
 
         let fromRecoveryLink = isPasswordRecoverySession()
+        let linkProblem = ''
 
-        // PKCE-style links carry ?code= instead; exchange it ourselves if the
-        // client did not already.
-        const code = new URL(window.location.href).searchParams.get('code')
+        const params = new URL(window.location.href).searchParams
+
+        // Links from the reset email template carry ?token_hash=…&type=recovery.
+        // They work on any device (see supabase/README.md, "Reset password email").
+        const tokenHash = params.get('token_hash')
+        if (!fromRecoveryLink && tokenHash && params.get('type') === 'recovery') {
+          const { error } = await supabase.auth.verifyOtp({ token_hash: tokenHash, type: 'recovery' })
+          // The token works once; take it out of the address bar.
+          window.history.replaceState(window.history.state, '', window.location.pathname)
+          if (error) {
+            logDev('VERIFY RECOVERY TOKEN ERROR:', error)
+          }
+          fromRecoveryLink = !error && isPasswordRecoverySession()
+        }
+
+        // Links from the default template carry ?code=. The browser that asked
+        // for the email exchanges it by itself while it starts; if it did not,
+        // try here (it only works in that same browser).
+        const code = params.get('code')
         if (!fromRecoveryLink && code) {
           const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (error) {
             logDev('EXCHANGE CODE ERROR:', error)
+            linkProblem =
+              'This reset link only works in the browser where you asked for it. Open it there, or request a new link.'
           }
           // The exchange announces PASSWORD_RECOVERY itself when the code came
           // from a reset email, which sets the flag read here.
@@ -62,7 +81,7 @@ export default function ResetPasswordPage() {
         } else {
           setHasSession(false)
           setErrorMessage(
-            'This reset link is invalid or expired. Please request a new password reset link.'
+            linkProblem || 'This reset link is invalid or expired. Please request a new password reset link.'
           )
         }
       } catch (err) {

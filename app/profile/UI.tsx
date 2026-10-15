@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
 import AppNav from "@/components/AppNav";
 import {
@@ -26,6 +27,9 @@ import {
   ExternalLink,
   Link2,
   RefreshCcw,
+  ShieldCheck,
+  Download,
+  Trash2,
 } from "lucide-react";
 
 type ProfileUIProps = {
@@ -50,6 +54,15 @@ externalCitationCount: number;
 externalHIndex: number;
 externalMetricsSyncedAt: string;
 syncingMetrics: boolean;
+  /** When the ORCID iD was proven with ORCID sign-in ("" = not verified). */
+  orcidVerifiedAt?: string;
+  orcidSignInAvailable?: boolean;
+  handleVerifyOrcid?: () => void;
+  isAdmin?: boolean;
+  downloadingData?: boolean;
+  deletingAccount?: boolean;
+  handleDownloadData?: () => void;
+  handleDeleteAccount?: (typedConfirmation: string) => void;
 
   profilePicUrl: string;
   coverPhotoUrl: string;
@@ -117,8 +130,9 @@ function formatSyncTime(value: string) {
   }
 }
 
-const DEFAULT_COVER =
-  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1440&h=280&fit=crop&auto=format";
+// Self-hosted default cover (an abstract network), so profiles without a cover
+// make no request to another site.
+const DEFAULT_COVER = "/images/default-cover.svg";
 
 export default function ProfileUI({
   loading,
@@ -140,6 +154,14 @@ externalCitationCount,
 externalHIndex,
 externalMetricsSyncedAt,
 syncingMetrics,
+orcidVerifiedAt = "",
+orcidSignInAvailable = false,
+handleVerifyOrcid,
+isAdmin = false,
+downloadingData = false,
+deletingAccount = false,
+handleDownloadData,
+handleDeleteAccount,
 profilePicUrl,
   coverPhotoUrl,
   previewProfileUrl,
@@ -166,6 +188,11 @@ handleProfilePicSelect,
 }: ProfileUIProps) {
   const profileFileInputRef = useRef<HTMLInputElement>(null);
   const coverFileInputRef = useRef<HTMLInputElement>(null);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+
+  // With ORCID sign-in set up, numbers are only fetched for a verified iD.
+  const syncNeedsVerification = orcidSignInAvailable && !orcidVerifiedAt;
 
   const initials = getInitials(name, email);
   const skillsList = useMemo(() => splitCommaItems(skills), [skills]);
@@ -598,7 +625,7 @@ handleProfilePicSelect,
     <BarChart2 className="w-4 h-4 text-primary" /> Research Metrics
   </h2>
 
-  <div className="flex items-center gap-2">
+  <div className="flex flex-wrap items-center justify-end gap-2">
     {orcidId && (
       <a
         href={`https://orcid.org/${orcidId}`}
@@ -611,10 +638,27 @@ handleProfilePicSelect,
       </a>
     )}
 
+    {orcidVerifiedAt ? (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-800">
+        <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+        Verified
+      </span>
+    ) : orcidSignInAvailable && handleVerifyOrcid ? (
+      <button
+        type="button"
+        onClick={handleVerifyOrcid}
+        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-800 hover:bg-emerald-100"
+      >
+        <ShieldCheck className="h-3 w-3" aria-hidden="true" />
+        Verify with ORCID
+      </button>
+    ) : null}
+
     <button
       type="button"
       onClick={handleSyncExternalMetrics}
-      disabled={syncingMetrics || !orcidId}
+      disabled={syncingMetrics || !orcidId || syncNeedsVerification}
+      title={syncNeedsVerification ? "Verify your ORCID iD first" : undefined}
       className="inline-flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[11px] font-bold text-white transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-40"
     >
       <RefreshCcw
@@ -686,9 +730,10 @@ handleProfilePicSelect,
   </div>
 
   <p className="text-[11px] text-muted-foreground mt-3 italic">
-    External metrics sync: {formatSyncTime(externalMetricsSyncedAt)}.
-    Citation-based values can be updated later using ORCID and external
-    publication indexes.
+    Publications, citations and h-index come from OpenAlex for the ORCID iD
+    above{orcidVerifiedAt ? ", which you verified with ORCID" : ""}. Last sync:{" "}
+    {formatSyncTime(externalMetricsSyncedAt)}.
+    {syncNeedsVerification && " Verify your ORCID iD to sync them."}
   </p>
 </div>
 
@@ -729,6 +774,7 @@ handleProfilePicSelect,
         />
         <p id="profile-orcid-hint" className="mt-1 text-[11px] text-muted-foreground">
           Enter only your ORCID iD or full ORCID URL.
+          {orcidVerifiedAt && " Changing it removes the verification."}
         </p>
       </div>
 
@@ -873,6 +919,26 @@ handleProfilePicSelect,
                   Change password
                   <Edit3 className="w-3.5 h-3.5 text-muted-foreground" />
                 </a>
+                {isAdmin && (
+                  <Link
+                    href="/admin"
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold text-foreground transition-colors"
+                  >
+                    Admin console
+                    <ShieldCheck className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+                  </Link>
+                )}
+                {handleDownloadData && (
+                  <button
+                    type="button"
+                    onClick={handleDownloadData}
+                    disabled={downloadingData}
+                    className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-border hover:bg-muted text-sm font-semibold text-foreground transition-colors disabled:opacity-60"
+                  >
+                    {downloadingData ? "Preparing your data…" : "Download my data"}
+                    <Download className="w-3.5 h-3.5 text-muted-foreground" aria-hidden="true" />
+                  </button>
+                )}
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors"
@@ -881,6 +947,66 @@ handleProfilePicSelect,
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>
+
+              {handleDeleteAccount && (
+                <div className="mt-4 border-t border-border pt-4">
+                  {!showDeleteAccount ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowDeleteAccount(true)}
+                      className="text-xs font-semibold text-red-700 hover:underline"
+                    >
+                      Delete my account…
+                    </button>
+                  ) : (
+                    <div className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                      <h3 className="flex items-center gap-2 text-sm font-bold text-red-800">
+                        <Trash2 className="h-4 w-4" aria-hidden="true" />
+                        Delete account
+                      </h3>
+                      <p className="text-xs leading-relaxed text-red-800">
+                        This permanently deletes your profile, posts, comments, messages, uploaded
+                        files and connections, and the workspaces you own (for all their members).
+                        Download your data first if you want a copy.
+                      </p>
+                      <div>
+                        <label htmlFor="delete-account-confirm" className="block text-xs font-semibold text-red-800">
+                          Type DELETE to confirm
+                        </label>
+                        <input
+                          id="delete-account-confirm"
+                          type="text"
+                          autoComplete="off"
+                          value={deleteConfirmation}
+                          onChange={(event) => setDeleteConfirmation(event.target.value)}
+                          className="mt-1 w-full rounded-lg border border-red-200 bg-white px-3 py-2 text-sm text-foreground focus:border-red-500 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteAccount(deleteConfirmation)}
+                          disabled={deletingAccount || deleteConfirmation.trim() !== "DELETE"}
+                          className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          {deletingAccount ? "Deleting…" : "Delete my account permanently"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowDeleteAccount(false);
+                            setDeleteConfirmation("");
+                          }}
+                          disabled={deletingAccount}
+                          className="rounded-lg px-3 py-2 text-xs font-semibold text-red-800 hover:bg-red-100"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>

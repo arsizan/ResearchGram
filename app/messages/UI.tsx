@@ -2,7 +2,7 @@
 
 
 import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AppNav from "@/components/AppNav";
 import {
   Search,
@@ -17,7 +17,14 @@ import {
   Building2,
   Hash,
   ChevronDown,
+  Bell,
+  BellOff,
+  Paperclip,
+  Square,
+  UserRound,
 } from "lucide-react";
+import type { VoiceNote } from "./useVoiceRecorder";
+import { MAX_VOICE_SECONDS } from "./useVoiceRecorder";
 
 // ─── Types (preserved verbatim) ──────────────────────────────────────────────
 
@@ -53,6 +60,22 @@ export type MessageRow = {
   read_at: string | null;
   is_deleted: boolean | null;
   created_at: string | null;
+  attachment_path?: string | null;
+  attachment_name?: string | null;
+  attachment_type?: string | null;
+  attachment_size?: number | null;
+  attachment_kind?: "file" | "image" | "voice" | null;
+  attachment_duration_seconds?: number | null;
+  /** Short-lived signed link to the attachment (private bucket). */
+  attachment_url?: string | null;
+};
+
+/** A file chosen for the next message (voice messages come from useVoiceRecorder). */
+export type PendingFile = {
+  file: File;
+  kind: "file" | "image";
+  /** Local preview for images. */
+  previewUrl: string;
 };
 
 export type ConversationView = {
@@ -80,6 +103,8 @@ export type ConversationView = {
   } | null;
   last_message: MessageRow | null;
   unread_count: number;
+  /** Muted by me: not counted in the unread badges. */
+  muted?: boolean;
 };
 
 export type TypingUser = {
@@ -123,6 +148,26 @@ type MessagesUIProps = {
   hasOlderMessages?: boolean;
   loadingOlderMessages?: boolean;
   handleLoadOlderMessages?: () => void;
+
+  // Attachments, voice messages and the "More options" menu (Phase 4).
+  pendingFile?: PendingFile | null;
+  voiceRecording?: boolean;
+  /** Waiting for the browser's microphone permission. */
+  voiceStarting?: boolean;
+  voiceSeconds?: number;
+  voiceNote?: VoiceNote | null;
+  /** The last recording stopped at the time limit. */
+  voiceLimitReached?: boolean;
+  handlePickAttachment?: (file: File | null) => void;
+  handleRemoveAttachment?: () => void;
+  handleStartVoice?: () => void;
+  handleStopVoice?: () => void;
+  handleCancelVoice?: () => void;
+  handleDiscardVoice?: () => void;
+  /** A file's link stopped working on screen (expired): get a new one. */
+  handleAttachmentLinkFailed?: (path: string) => void;
+  handleToggleMute?: (conversationId: string) => void;
+  handleOpenProfile?: (profileId: string) => void;
 };
 
 // ─── Constants (preserved verbatim) ──────────────────────────────────────────
@@ -136,6 +181,12 @@ const DIVISIONS: {
   { label: "Collaborations", value: "collaboration", description: "Research-request based collaboration chats" },
   { label: "Workspaces", value: "workspace_group", description: "Group chats for shared workspace members" },
 ];
+
+// The research assistant's round button floats over the bottom right corner
+// of this page (components/assistant/ResearchAssistant.tsx: 56 px wide, 16 px
+// from the edge, 24 px on large screens). The rows above the message box (a
+// chosen file, a recording) keep their buttons out from under it.
+const CLEAR_OF_ASSISTANT = "mr-16 lg:mr-[4.5rem]";
 
 // ─── Helpers (preserved + extended) ──────────────────────────────────────────
 
@@ -250,6 +301,18 @@ function lastMessagePreview(conversation: ConversationView) {
   return body;
 }
 
+function formatBytes(bytes: number | null | undefined) {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDuration(totalSeconds: number | null | undefined) {
+  const value = Math.max(0, Math.round(totalSeconds || 0));
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
+}
+
 function getOtherMember(conversation: ConversationView | null, currentUserId: string): ConversationMemberView | null {
   if (!conversation) return null;
   return conversation.members.find((m) => m.user_id !== currentUserId) ?? null;
@@ -315,6 +378,217 @@ function GroupTile({
   );
 }
 
+// ─── Attachment inside a message ─────────────────────────────────────────────
+
+function MessageAttachment({
+  message,
+  mine,
+  onLinkFailed,
+}: {
+  message: MessageRow;
+  mine: boolean;
+  onLinkFailed?: (path: string) => void;
+}) {
+  const name = message.attachment_name || "Attachment";
+  const url = message.attachment_url || "";
+  const linkFailed = () => {
+    if (message.attachment_path) onLinkFailed?.(message.attachment_path);
+  };
+
+  if (!url) {
+    return (
+      <p className={`text-xs italic ${mine ? "text-white/90" : "text-muted-foreground"}`}>
+        {message.attachment_kind === "voice" ? "Voice message" : name} (not available right now)
+      </p>
+    );
+  }
+
+  if (message.attachment_kind === "voice") {
+    return (
+      <div className="flex flex-col gap-1">
+        <audio
+          controls
+          preload="none"
+          src={url}
+          onError={linkFailed}
+          className="h-10 w-60 max-w-full"
+          aria-label={`Voice message, ${formatDuration(message.attachment_duration_seconds)}`}
+        />
+        <span className={`text-[11px] ${mine ? "text-white/90" : "text-muted-foreground"}`}>
+          Voice message · {formatDuration(message.attachment_duration_seconds)}
+        </span>
+      </div>
+    );
+  }
+
+  if (message.attachment_kind === "image") {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+        {/* A signed link from private storage; next/image cannot resize those.
+            The box has a fixed size, so a picture that loads later does not
+            push the newest messages out of view. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          loading="lazy"
+          width={240}
+          height={240}
+          onError={linkFailed}
+          className="h-60 w-60 max-w-full rounded-xl object-contain bg-white"
+        />
+      </a>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold underline-offset-2 hover:underline ${
+        mine ? "bg-white/15 text-white" : "bg-muted text-foreground"
+      }`}
+    >
+      <Paperclip className="h-4 w-4 flex-shrink-0" aria-hidden="true" />
+      <span className="min-w-0 truncate">{name}</span>
+      {message.attachment_size ? (
+        <span className={`flex-shrink-0 text-[11px] font-normal ${mine ? "text-white/90" : "text-muted-foreground"}`}>
+          {formatBytes(message.attachment_size)}
+        </span>
+      ) : null}
+    </a>
+  );
+}
+
+// ─── "More options" menu of the open chat ───────────────────────────────────
+
+function ChatMoreMenu({
+  conversation,
+  otherMember,
+  onToggleMute,
+  onOpenProfile,
+}: {
+  conversation: ConversationView;
+  otherMember: ConversationMemberView | null;
+  onToggleMute?: (conversationId: string) => void;
+  onOpenProfile?: (profileId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const items: { key: string; label: string; icon: typeof Bell; run: () => void }[] = [];
+
+  if (onToggleMute) {
+    items.push({
+      key: "mute",
+      label: conversation.muted ? "Unmute chat" : "Mute chat",
+      icon: conversation.muted ? Bell : BellOff,
+      run: () => onToggleMute(conversation.id),
+    });
+  }
+
+  if (conversation.conversation_type === "direct" && otherMember && onOpenProfile) {
+    items.push({
+      key: "profile",
+      label: "View profile",
+      icon: UserRound,
+      run: () => onOpenProfile(otherMember.user_id),
+    });
+  }
+
+  // Focus the first item when the menu opens; close on a click elsewhere.
+  useEffect(() => {
+    if (!open) return;
+    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && !buttonRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    return () => window.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  if (items.length === 0) return null;
+
+  const close = (returnFocus: boolean) => {
+    setOpen(false);
+    if (returnFocus) buttonRef.current?.focus();
+  };
+
+  const onMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const entries = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [],
+    );
+    const index = entries.indexOf(document.activeElement as HTMLElement);
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close(true);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      entries[(index + 1) % entries.length]?.focus();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      entries[(index - 1 + entries.length) % entries.length]?.focus();
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      entries[0]?.focus();
+    } else if (event.key === "End") {
+      event.preventDefault();
+      entries[entries.length - 1]?.focus();
+    } else if (event.key === "Tab") {
+      setOpen(false);
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        aria-label="More options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground"
+      >
+        <MoreHorizontal className="w-4 h-4" aria-hidden="true" />
+      </button>
+      {open && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label="Chat options"
+          onKeyDown={onMenuKeyDown}
+          className="absolute right-0 top-full z-30 mt-1 w-48 rounded-xl border border-border bg-card p-1 shadow-lg"
+        >
+          {items.map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              role="menuitem"
+              tabIndex={-1}
+              onClick={() => {
+                close(true);
+                item.run();
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted focus:bg-muted focus:outline-none"
+            >
+              <item.icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main UI ─────────────────────────────────────────────────────────────────
 
 export default function MessagesUI({
@@ -345,7 +619,75 @@ export default function MessagesUI({
   hasOlderMessages = false,
   loadingOlderMessages = false,
   handleLoadOlderMessages,
+  pendingFile = null,
+  voiceRecording = false,
+  voiceStarting = false,
+  voiceSeconds = 0,
+  voiceNote = null,
+  voiceLimitReached = false,
+  handlePickAttachment,
+  handleRemoveAttachment,
+  handleStartVoice,
+  handleStopVoice,
+  handleCancelVoice,
+  handleDiscardVoice,
+  handleAttachmentLinkFailed,
+  handleToggleMute,
+  handleOpenProfile,
 }: MessagesUIProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasAttachment = Boolean(pendingFile || voiceNote);
+  const voiceBusy = voiceRecording || voiceStarting;
+  const canSend = !sending && !voiceBusy && (Boolean(messageText.trim()) || hasAttachment);
+
+  // ── Composer: focus and what screen readers hear ─────────────────────────
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const micButtonRef = useRef<HTMLButtonElement>(null);
+  const stopButtonRef = useRef<HTMLButtonElement>(null);
+  const sendButtonRef = useRef<HTMLButtonElement>(null);
+  const wasRecordingRef = useRef(false);
+  const wasStartingRef = useRef(false);
+
+  // Buttons that disappear or turn off while recording would leave keyboard
+  // focus nowhere: move it to the next useful control instead. Focus that is
+  // somewhere else (another chat, the text box) is left alone.
+  useEffect(() => {
+    const active = document.activeElement;
+    const focusLost = !active || active === document.body || active === micButtonRef.current;
+
+    if (voiceRecording && !wasRecordingRef.current) {
+      if (focusLost) stopButtonRef.current?.focus();
+    } else if (!voiceRecording && wasRecordingRef.current) {
+      if (focusLost) (voiceNote ? sendButtonRef.current : textareaRef.current)?.focus();
+    } else if (!voiceStarting && wasStartingRef.current && !voiceRecording) {
+      // The microphone was refused: back to the microphone button.
+      if (focusLost) micButtonRef.current?.focus();
+    }
+
+    wasRecordingRef.current = voiceRecording;
+    wasStartingRef.current = voiceStarting;
+  }, [voiceRecording, voiceStarting, voiceNote]);
+
+  // One polite announcement per change, not a ticking clock.
+  const composerStatus =
+    sending && hasAttachment
+      ? "Sending…"
+      : voiceStarting
+        ? "Waiting for microphone access…"
+        : voiceRecording
+          ? `Recording a voice message, up to ${MAX_VOICE_SECONDS / 60} minutes.`
+          : voiceNote
+            ? voiceLimitReached
+              ? `Recording stopped at the ${MAX_VOICE_SECONDS / 60}-minute limit. Voice message ready to send.`
+              : "Voice message ready to send."
+            : pendingFile
+              ? `Attached ${pendingFile.file.name}, ${formatBytes(pendingFile.file.size)}.`
+              : "";
+
+  const removeAndRefocus = (remove?: () => void) => {
+    remove?.();
+    textareaRef.current?.focus();
+  };
   const [search, setSearch] = useState("");
   const [showNewChat, setShowNewChat] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(Boolean(selectedConversationId));
@@ -366,7 +708,7 @@ export default function MessagesUI({
       direct: 0, collaboration: 0, workspace_group: 0,
     };
     conversations.forEach((c) => {
-      map[c.conversation_type] += c.unread_count;
+      if (!c.muted) map[c.conversation_type] += c.unread_count;
     });
     return map;
   }, [conversations]);
@@ -716,8 +1058,17 @@ const messageStream: StreamItem[] = useMemo(() => {
 
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2">
-                          <p className={`text-sm truncate ${conv.unread_count > 0 ? "font-extrabold text-foreground" : "font-semibold text-foreground"}`}>
+                          <p className={`text-sm truncate ${conv.unread_count > 0 && !conv.muted ? "font-extrabold text-foreground" : "font-semibold text-foreground"}`}>
                             {titleForList}
+                            {conv.muted && (
+                              <>
+                                <BellOff
+                                  className="ml-1 inline h-3 w-3 align-[-1px] text-muted-foreground"
+                                  aria-hidden="true"
+                                />
+                                <span className="sr-only"> (muted)</span>
+                              </>
+                            )}
                           </p>
                           <span className="text-[10px] text-muted-foreground flex-shrink-0">
                             {formatListTime(conv.last_message_at)}
@@ -736,7 +1087,11 @@ const messageStream: StreamItem[] = useMemo(() => {
                       </div>
 
                       {conv.unread_count > 0 && (
-                        <span className="flex-shrink-0 mt-1 min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+                        <span
+                          className={`flex-shrink-0 mt-1 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[10px] font-bold flex items-center justify-center ${
+                            conv.muted ? "bg-slate-500" : "bg-primary"
+                          }`}
+                        >
                           {conv.unread_count > 99 ? "99+" : conv.unread_count}
                         </span>
                       )}
@@ -779,7 +1134,14 @@ const messageStream: StreamItem[] = useMemo(() => {
                   {/* Mobile back */}
                   <button
                     type="button"
-                    onClick={() => setMobileChatOpen(false)}
+                    onClick={() => {
+                      // The recording bar is about to be hidden: do not keep
+                      // the microphone on out of sight. What was recorded so
+                      // far stays ready in this chat.
+                      if (voiceRecording) handleStopVoice?.();
+                      else if (voiceStarting) handleCancelVoice?.();
+                      setMobileChatOpen(false);
+                    }}
                     aria-label="Back to conversations"
                     className="lg:hidden p-1.5 rounded-xl hover:bg-muted transition-colors mr-1 text-muted-foreground"
                   >
@@ -829,13 +1191,13 @@ const messageStream: StreamItem[] = useMemo(() => {
                         <span className="hidden sm:inline">Open Workspace</span>
                       </button>
                     )}
-                    <button
-                      type="button"
-                      aria-label="More options"
-                      className="p-2 rounded-xl hover:bg-muted transition-colors text-muted-foreground hidden sm:block"
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </button>
+                    <ChatMoreMenu
+                      key={selectedConversation.id}
+                      conversation={selectedConversation}
+                      otherMember={other}
+                      onToggleMute={handleToggleMute}
+                      onOpenProfile={handleOpenProfile}
+                    />
                   </div>
                 </div>
 
@@ -919,7 +1281,12 @@ const messageStream: StreamItem[] = useMemo(() => {
                                   : "bg-card border border-border text-foreground rounded-bl-sm"
                               }`}
                             >
-                              <p className="whitespace-pre-wrap">{msg.body}</p>
+                              {msg.attachment_path && (
+                                <div className={msg.body ? "mb-2" : ""}>
+                                  <MessageAttachment message={msg} mine={mine} onLinkFailed={handleAttachmentLinkFailed} />
+                                </div>
+                              )}
+                              {msg.body && <p className="whitespace-pre-wrap">{msg.body}</p>}
                             </div>
                             <p className="text-[10px] text-muted-foreground px-1">
                               {formatTime(msg.created_at)}
@@ -958,43 +1325,148 @@ const messageStream: StreamItem[] = useMemo(() => {
 
                 {/* Input */}
                 <div className="px-4 py-3 bg-card border-t border-border flex-shrink-0">
+                  <p role="status" className="sr-only">{composerStatus}</p>
+
+                  {/* What will be sent with the message */}
+                  {voiceRecording && (
+                    <div className={`${CLEAR_OF_ASSISTANT} mb-2 flex items-center gap-3 rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-800`}>
+                      <span className="h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-red-600" aria-hidden="true" />
+                      {/* A timer is not read out on every tick; it can be read on demand. */}
+                      <span role="timer" className="flex-1 font-semibold">
+                        Recording {formatDuration(voiceSeconds)} / {formatDuration(MAX_VOICE_SECONDS)}
+                      </span>
+                      <button
+                        ref={stopButtonRef}
+                        type="button"
+                        onClick={handleStopVoice}
+                        aria-label="Stop recording"
+                        className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-red-700"
+                      >
+                        <Square className="h-3 w-3" aria-hidden="true" />
+                        Stop
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelVoice}
+                        aria-label="Cancel recording"
+                        className="rounded-lg px-2 py-1.5 text-xs font-semibold text-red-800 hover:bg-red-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+
+                  {voiceNote && !voiceRecording && (
+                    <div className={`${CLEAR_OF_ASSISTANT} mb-2 flex items-center gap-3 rounded-xl border border-border bg-muted/60 px-3 py-2`}>
+                      <Mic className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true" />
+                      <audio
+                        controls
+                        src={voiceNote.url}
+                        className="h-9 min-w-0 flex-1"
+                        aria-label={`Recorded voice message, ${formatDuration(voiceNote.seconds)}`}
+                      />
+                      <span className="text-xs text-muted-foreground">{formatDuration(voiceNote.seconds)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAndRefocus(handleDiscardVoice)}
+                        disabled={sending}
+                        aria-label="Remove voice message"
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+
+                  {pendingFile && (
+                    <div className={`${CLEAR_OF_ASSISTANT} mb-2 flex items-center gap-3 rounded-xl border border-border bg-muted/60 px-3 py-2`}>
+                      {pendingFile.kind === "image" && pendingFile.previewUrl ? (
+                        // A local preview of the chosen picture.
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={pendingFile.previewUrl}
+                          alt=""
+                          className="h-10 w-10 flex-shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <Paperclip className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                        {pendingFile.file.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">{formatBytes(pendingFile.file.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAndRefocus(handleRemoveAttachment)}
+                        disabled={sending}
+                        aria-label="Remove attachment"
+                        className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-40"
+                      >
+                        <X className="h-4 w-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  )}
+
                   <div className="flex items-end gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      className="hidden"
+                      tabIndex={-1}
+                      aria-hidden="true"
+                      onChange={(event) => {
+                        handlePickAttachment?.(event.target.files?.[0] || null);
+                        // Choosing the same file again must work too.
+                        event.target.value = "";
+                      }}
+                    />
                     <button
                       type="button"
-                      className="p-2.5 rounded-xl hover:bg-muted transition-colors text-muted-foreground flex-shrink-0"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={!handlePickAttachment || voiceBusy || sending}
+                      className="p-2.5 rounded-xl hover:bg-muted transition-colors text-muted-foreground flex-shrink-0 disabled:opacity-40"
                       aria-label="Add attachment"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-4 h-4" aria-hidden="true" />
                     </button>
 
                     <div className="flex-1 relative">
                       <textarea
+                        ref={textareaRef}
                         aria-label="Message"
                         value={messageText}
                         onChange={(e) => handleChangeMessageText(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            if (messageText.trim() && !sending) handleSendMessage();
+                            if (canSend) handleSendMessage();
                           }
                         }}
-                        placeholder="Write a message…"
+                        placeholder={hasAttachment ? "Add a message (optional)…" : "Write a message…"}
                         rows={1}
                         className="w-full max-h-32 resize-none px-4 py-2.5 text-sm bg-muted rounded-2xl border border-transparent focus:border-primary focus:bg-white focus:outline-none transition-all pr-10 leading-relaxed"
                         style={{ minHeight: "44px" }}
                       />
                       <button
+                        ref={micButtonRef}
                         type="button"
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
-                        aria-label="Voice message"
+                        onClick={handleStartVoice}
+                        disabled={!handleStartVoice || voiceBusy || sending}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors disabled:opacity-40"
+                        aria-label="Record a voice message"
                       >
-                        <Mic className="w-4 h-4" />
+                        <Mic className="w-4 h-4" aria-hidden="true" />
                       </button>
                     </div>
 
                     <button
-                      onClick={handleSendMessage}
-                      disabled={sending || !messageText.trim()}
+                      ref={sendButtonRef}
+                      onClick={() => {
+                        handleSendMessage();
+                        // The button turns off while sending; keep typing where you were.
+                        textareaRef.current?.focus();
+                      }}
+                      disabled={!canSend}
                       className="w-11 h-11 rounded-xl bg-primary text-white flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                       aria-label="Send message"
                     >
@@ -1006,7 +1478,7 @@ const messageStream: StreamItem[] = useMemo(() => {
                     </button>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-1.5 px-2 hidden sm:block">
-                    Enter to send · Shift+Enter for new line
+                    Enter to send · Shift+Enter for new line · Files up to 25 MB
                   </p>
                 </div>
               </>

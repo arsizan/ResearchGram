@@ -1,16 +1,15 @@
 import { supabase } from "@/lib/supabase";
 import { logDev } from "@/lib/log";
+import { sameSitePath } from "@/lib/safePath";
 
 /**
  * A notification's link is written by another user's browser, so it is only
- * followed when it is a path inside this app. "//evil.com" and "/\evil.com"
- * are treated by browsers as other sites, so they are rejected too (audit RG-08;
- * the database enforces the same rule on new rows).
+ * followed when it is a path inside this app. "//evil.com", "/\evil.com" and
+ * "/<tab>/evil.com" are other sites to a browser, so they are rejected too
+ * (audit RG-08; the database enforces the same rule on new rows).
  */
 export function safeInternalPath(link: string | null | undefined, fallback: string) {
-  if (!link || !link.startsWith("/")) return fallback;
-  if (link.startsWith("//") || link.startsWith("/\\")) return fallback;
-  return link;
+  return sameSitePath(link) ?? fallback;
 }
 
 export type NotificationType =

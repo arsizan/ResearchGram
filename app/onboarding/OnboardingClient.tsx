@@ -7,13 +7,12 @@ import { supabase } from "@/lib/supabase";
 import OnboardingUI from "./UI";
 import { logDev } from "@/lib/log";
 import { friendlyError, notify } from "@/lib/feedback";
+import { sameSitePath } from "@/lib/safePath";
 
 function cleanNextPath(value: string | null) {
-  if (!value) return "/feed";
-  if (!value.startsWith("/")) return "/feed";
-  if (value.startsWith("//")) return "/feed";
-  if (value.startsWith("/auth")) return "/feed";
-  return value;
+  const path = sameSitePath(value);
+  if (!path || path.startsWith("/auth")) return "/feed";
+  return path;
 }
 
 function calculateCompletionScore(values: {

@@ -30,7 +30,8 @@ type ActivePage =
   | "notifications"
   | "mentorship"
   | "workspace"
-  | "search";
+  | "search"
+  | "admin";
 
 type AppNavProps = {
   activePage: ActivePage;
@@ -101,9 +102,10 @@ export default function AppNav({ activePage }: AppNavProps) {
       return;
     }
 
+    // Chats I muted do not count.
     const unreadCount = (
-      (summaries || []) as { unread_count: number | string | null }[]
-    ).reduce((total, row) => total + (Number(row.unread_count) || 0), 0);
+      (summaries || []) as { unread_count: number | string | null; muted?: boolean | null }[]
+    ).reduce((total, row) => total + (row.muted ? 0 : Number(row.unread_count) || 0), 0);
 
     setUnreadMessageCount(unreadCount);
   }, []);
@@ -288,9 +290,11 @@ useEffect(() => {
     router.push(value ? `/search?q=${encodeURIComponent(value)}` : "/search");
   };
 
+  // A full page load, so nothing from the signed-in session stays in the
+  // app's in-memory page cache; replace(), so Back does not return to it.
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push("/auth/login");
+    window.location.replace("/auth/login");
   };
 
   const nav: {
