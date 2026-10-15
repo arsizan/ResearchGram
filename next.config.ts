@@ -7,6 +7,8 @@ import type { NextConfig } from "next";
  * site, talk to this site and the project's Supabase (HTTPS and the realtime
  * websocket), and embed Supabase file previews and Jitsi meetings. Inline
  * scripts stay allowed because Next.js needs them for static pages.
+ * Cloudflare Turnstile (the bot check on the sign-in pages, Phase 5) loads a
+ * script and a frame from challenges.cloudflare.com.
  */
 function supabaseOrigins() {
   try {
@@ -18,20 +20,30 @@ function supabaseOrigins() {
   }
 }
 
+// The Privacy Policy and Terms must name a contact address (Phase 5). A
+// production deployment on Vercel stops here without one, and the live site
+// keeps the previous deployment, instead of publishing a policy nobody answers.
+if (process.env.VERCEL_ENV === "production" && !(process.env.NEXT_PUBLIC_CONTACT_EMAIL || "").trim()) {
+  throw new Error(
+    "Set NEXT_PUBLIC_CONTACT_EMAIL in Vercel (Settings > Environment Variables): the Privacy Policy and Terms need a contact address.",
+  );
+}
+
 const isDev = process.env.NODE_ENV !== "production";
 const supabase = supabaseOrigins();
 const JITSI = "https://meet.jit.si";
+const TURNSTILE = "https://challenges.cloudflare.com";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
   // 'unsafe-eval' only for the development server's hot reload.
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} ${TURNSTILE}`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   `connect-src 'self' ${supabase.http} ${supabase.socket}`,
   `media-src 'self' blob: ${supabase.http}`,
-  `frame-src 'self' blob: ${JITSI} ${supabase.http}`,
+  `frame-src 'self' blob: ${JITSI} ${supabase.http} ${TURNSTILE}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

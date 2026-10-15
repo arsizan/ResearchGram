@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportError } from "@/lib/errorReport";
 import Link from "next/link";
 
 /**
@@ -19,7 +20,8 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // TODO(observability): forward to Sentry once it is wired up.
+    // Into the error log admins see in /admin (Phase 5).
+    reportError(error, { digest: error.digest });
     console.error("Unhandled application error:", error);
   }, [error]);
 

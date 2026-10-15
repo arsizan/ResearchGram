@@ -11,8 +11,11 @@ const check = async (label, fn) => {
   try { await fn(); } catch (e) { console.error(`FAILED: ${label}`); throw e; }
 };
 
-const db = await makeDb({ rerun: ['20261016000000_phase4.sql', '20261016010000_phase4_after_deploy.sql'] });
-assert.equal(MIGRATIONS.length, 9);
+// Phase 4 run again, then the files after it again, so what is tested is the
+// newest version of everything (Phase 5 replaces some Phase 4 functions).
+const LATER = MIGRATIONS.slice(MIGRATIONS.indexOf('20261016010000_phase4_after_deploy.sql') + 1);
+const db = await makeDb({ rerun: ['20261016000000_phase4.sql', '20261016010000_phase4_after_deploy.sql', ...LATER] });
+assert.ok(MIGRATIONS.includes('20261016000000_phase4.sql'));
 console.log('MIGRATIONS: applied, Phase 4 re-run OK'); ok();
 
 // The chat bucket accepts exactly what the app lets people attach.

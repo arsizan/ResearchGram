@@ -205,11 +205,14 @@ export default function PostList({
         {/* Header */}
         <div className="p-5 pb-0 flex items-start justify-between gap-3">
           <div className="flex items-start gap-3 min-w-0">
+            {/* A mouse shortcut: the name button next to it opens the same
+                profile, so keyboards and screen readers get one stop, not two. */}
             <button
               type="button"
               onClick={() => post.user_id && onGoToResearcher(post.user_id)}
               className="flex-shrink-0 rounded-full"
-              aria-label={`Open ${authorName}'s profile`}
+              tabIndex={-1}
+              aria-hidden="true"
             >
               <Avatar name={authorName} picUrl={post.profiles?.profile_pic_url} />
             </button>

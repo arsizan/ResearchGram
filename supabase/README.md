@@ -15,6 +15,7 @@ not have it.
 | `20261015010000_close_post_text.sql` | Signed-in users may read every column of `contents` except `content`; the text then only comes from `readable_post_texts()` (RG-07). Run it **after** the Phase 3 code is live: older code reads `content` directly. Undo line at the top of the file. Safe to run more than once. |
 | `20261016000000_phase4.sql` | Admins (`public.admins`, `is_admin()`), the audit log, the moderation queue and admin functions; data export (`export_my_data`) and account deletion (`delete_my_account`); ORCID verification (`verify_orcid`, secret in Vault); chat attachments and voice messages (private `chat-attachments` bucket), mute, message times set by the database; random Jitsi room names (RG-22); connected people only for direct chats, request chats and workspace invites; a restricted paper opens only through an approved request for its own post; multi-step writes as single functions (RG-20: `create_workspace`, `add_workspace_member`, `start_direct_conversation`, `respond_to_*_request`, `create_post` …). It also tidies older rows: notification links that lead outside the app are removed, and existing meetings get new random rooms. Works with the Phase 3 code, so run it **before** deploying the Phase 4 code. Safe to run more than once. |
 | `20261016010000_phase4_after_deploy.sql` | Browsers may no longer update `conversations` (the database moves a chat to the top itself); a chat time set in the future goes back to the time of its last message. Run it **after** the Phase 4 code is live. Undo line in the file. |
+| `20261017000000_phase5.sql` | Speed: indexes on foreign keys, row checks that work out the signed-in user once per query instead of once per row (the Performance Advisor's findings), search with whole words in any order, word endings, ranking and typo-tolerant names (`search_posts`, `search_researchers`, with `pg_trgm`); the Terms and Privacy Policy consent record (`user_consents`, `accept_terms`, `current_terms_version`), filled in at sign-up; the error log (`error_reports`, `report_error`, `admin_error_reports`, `admin_resolve_error`); data export includes the consent record. Works with the Phase 4 code, so run it **before** deploying the Phase 5 code. Safe to run more than once. |
 
 ## Applying them
 
@@ -30,7 +31,7 @@ When the Supabase CLI is set up later, mark these as already applied with
 
 ## Admins
 
-Admins see `/admin` (reported posts, audit log). Add one in the SQL editor after the
+Admins see `/admin` (reported posts, error log, audit log). Add one in the SQL editor after the
 person has signed up:
 
 ```sql
@@ -46,8 +47,10 @@ Both are written to the audit log.
 
 The app keeps the session in cookies and uses the PKCE sign-in flow. With Supabase's
 default email template, a reset link only works in the browser where the reset was
-requested. To make it work on any device (phone mail app, another computer), change
-the template once:
+requested (in another browser the reset page says so). To make it work on any device
+(phone mail app, another computer), change the template once. Supabase only allows
+editing templates once custom SMTP is set up (Authentication → Emails → SMTP
+Settings), so this waits for the custom email sender (Resend, after the domain):
 
 Dashboard → Authentication → Emails → **Reset password**: replace the link
 `{{ .ConfirmationURL }}` with
@@ -65,19 +68,118 @@ The reset page accepts both kinds of links, so nothing breaks before or after th
   hours then cannot set a new password without a code sent by email, so someone at
   an unlocked computer cannot take over the account. The app only changes passwords
   from a reset link, which signs the person in fresh, so it keeps working.
-- **JWT signing keys** (optional, later): Project Settings → JWT Keys → *Migrate JWT
-  secret*, then *Rotate keys*. The server-side sign-in check (`proxy.ts`) can then
-  verify sessions without asking Supabase on every page load. Sessions that already
-  exist keep working; nobody is signed out.
+- **Bot check (CAPTCHA)**: see the next section.
+- **JWT signing keys**: Project Settings → JWT Keys → *Migrate JWT secret*, then
+  *Rotate keys* (ES256). New sessions are then signed with a key pair, and the
+  server-side sign-in check (`proxy.ts`) verifies them itself with the project's
+  public keys (`/auth/v1/.well-known/jwks.json`, cached for 10 minutes) instead of
+  asking Supabase Auth on every page load. Sessions that already exist keep working
+  until they expire (at most an hour); nobody is signed out.
+  Do **not** revoke the previous (legacy) secret yet: the legacy `anon` and
+  `service_role` keys are signed with it. Revoking is a separate, later step: first
+  make sure nothing uses the legacy keys (the app and the scripts use the
+  `sb_publishable_…` and `sb_secret_…` keys), disable them under API Keys, wait at
+  least 1 hour 15 minutes after the rotation, then revoke.
+
+## Bot check (CAPTCHA) on sign-up, login and password reset
+
+The app shows Cloudflare Turnstile on these three forms when
+`NEXT_PUBLIC_TURNSTILE_SITE_KEY` is set, and sends its token with the request.
+Supabase Auth checks the token with Cloudflare, so the secret key only ever goes
+into Supabase. Order matters: Supabase rejects every login without a token as soon
+as the check is on.
+
+1. Cloudflare dashboard → Turnstile → *Add widget*: hostname `research-gram.vercel.app`
+   (add the custom domain later), mode *Managed*. Copy the site key and the secret
+   key.
+2. Vercel: set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to the **site** key and redeploy.
+   Check that the login page shows the check.
+3. Supabase: Authentication → Attack Protection → *Enable CAPTCHA protection* →
+   provider *Turnstile by Cloudflare* → paste the **secret** key → Save.
+4. Log out and in again, and try "forgot password", to see that it works.
+
+To switch it off: turn the setting off in Supabase **first**, then remove the Vercel
+variable. Token refreshes and the links in emails (confirm sign-up, reset password)
+do not need the check, so nobody is signed out when it is turned on.
+
+While the check is on, only pages on the widget's hostnames can sign in:
+
+- **Local development** (`npm run dev`) cannot sign in to this project: Cloudflare
+  advises against allowing `localhost` on a production widget, and its test keys
+  only pass with the test secret. For local work, use a separate development
+  Supabase project (the Free plan allows two) with CAPTCHA off, or with the test
+  secret `1x0000000000000000000000000000000AA` and the test site key
+  `1x00000000000000000000AA` in `.env.local`.
+- **Vercel preview deployments** (`*.vercel.app` addresses of branches) cannot sign
+  in; test sign-in on the production address.
+
+## Terms and Privacy Policy versions
+
+`/terms` and `/privacy` show the current text; members must be 18 or older. The
+version is a date, kept in two places that must match (a database test checks it):
+`TERMS_VERSION` in `lib/legal.ts` and `public.current_terms_version()`. New members
+accept on the sign-up form (recorded by the sign-up trigger); everyone else is asked
+once by a notice behind the login (not on the profile page, so someone who does not
+agree can still download their data or delete their account). `user_consents` holds
+one row per member: the version they accepted, when, and that they confirmed their
+age.
+
+To publish a changed text:
+
+1. Edit the pages and set the new date in `TERMS_VERSION` in `lib/legal.ts` (the
+   date shown on the pages follows it).
+2. Write a migration that changes only `current_terms_version()` to the same date.
+3. Run the migration and push to `main` (Vercel deploys on push), in either order:
+   the notice only appears once the app and the database have the same date, so
+   nobody is stuck in between. Members who sign up in between are asked once more.
+
+## Error log
+
+Errors from browsers (`components/ErrorReporter.tsx`, the error pages) and from the
+server (`instrumentation.ts`) are sent to `report_error()`, which keeps only the
+message (300 characters), a short stack, the page path without its query string,
+the browser's user-agent text (for server errors: the route), and whether someone
+was signed in, never who. Email addresses, ids, sign-in tokens and the part of a
+web address after "?" are blanked out. The same error is counted, not stored
+again. Limits, because anyone can send a report: 200 new kinds of error an hour
+(100 from signed-out visitors, which includes server errors), 2,500 rows in all
+(2,000 for signed-out visitors). Errors not seen for 30 days are deleted at the
+next report or when an admin opens the list.
+
+Admins read them under `/admin` → Errors and mark them as fixed (written to the
+audit log). Reports can be faked, so treat them as hints; Vercel → Logs has the
+server errors too. If junk fills the log, clear it in the SQL editor, for example
+`delete from public.error_reports where resolved_at is null and message like 'junk%';`.
+Nothing is sent from `npm run dev`.
+
+## Security and Performance Advisor: expected findings
+
+After `20261017000000_phase5.sql` these remain, and are intended:
+
+- **0028** (*anon can execute a SECURITY DEFINER function*): `report_error`, so that
+  errors on pages before login are logged. It accepts only short text and limits how
+  much is stored.
+- **0029** (*authenticated can execute a SECURITY DEFINER function*): the app's own
+  database functions (`accept_terms`, `admin_*`, `export_my_data`, `search_posts`,
+  `verify_orcid` …). Each one checks who is calling before it does anything.
+- **0008** (INFO, *RLS enabled, no policy*): `admins`, `audit_log`, `action_rate_limits`,
+  `error_reports`. No policy means no direct access; they are used only through
+  functions.
+- **0005** (INFO, *unused index*): indexes that have not been needed since the last
+  statistics reset. Keep them; they matter once there is more data.
+
+Anything else is new and worth a look.
 
 ## ORCID sign-in ("Verify with ORCID")
 
 Optional. Without it, the profile works as before and the button is hidden.
 
 1. Register an app at <https://orcid.org/developer-tools> (or, for testing, at
-   <https://sandbox.orcid.org/developer-tools>). Redirect URI:
-   `https://research-gram.vercel.app/profile/orcid` (and `http://localhost:3000/profile/orcid`
-   for local testing).
+   <https://sandbox.orcid.org/developer-tools>). Redirect URI, exactly:
+   `https://research-gram.vercel.app/profile/orcid` (orcid.org only accepts https
+   addresses). The free public API is for non-commercial use only: its terms rule out
+   use "in connection with any revenue-generating product or service", so a paid
+   ResearchGram needs ORCID membership instead.
 2. Store the client id and secret in Vault (SQL editor). The secret never goes into
    the app, git or Vercel; only the database reads it.
 
@@ -88,7 +190,12 @@ Optional. Without it, the profile works as before and the button is hidden.
    -- select vault.create_secret('https://sandbox.orcid.org', 'orcid_base_url');
    ```
 
-   To change one later: `select vault.update_secret((select id from vault.secrets where name = 'orcid_client_secret'), 'new-secret');`
+   Then clear the editor (Ctrl+A, Delete) so the saved query does not keep the secret.
+   Check without showing the secret (both must be `true`):
+   `select public.orcid_setting('orcid_client_id') is not null as id_ok, public.orcid_setting('orcid_client_secret') is not null as secret_ok;`
+
+   If `create_secret` says the name already exists, change it instead:
+   `select vault.update_secret((select id from vault.secrets where name = 'orcid_client_secret'), 'new-secret');`
 3. In Vercel set `NEXT_PUBLIC_ORCID_CLIENT_ID` (the same client id) and, for a sandbox
    app, `NEXT_PUBLIC_ORCID_BASE_URL=https://sandbox.orcid.org`. Redeploy.
 

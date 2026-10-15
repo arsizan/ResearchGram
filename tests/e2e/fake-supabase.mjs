@@ -3,9 +3,15 @@
 // routing. Only what the pages under test use, with simplified copies of the
 // database functions' rules. The Next.js server's own sign-in check (proxy.ts)
 // talks to tests/e2e/auth-server.mjs instead, at the same address.
+// Cloudflare Turnstile (the bot check, Phase 5) is faked here too.
+import { readFileSync } from 'node:fs';
+import { signEs256, verifyEs256 } from './jwt-keys.mjs';
 
 export const SUPABASE_URL = process.env.E2E_SUPABASE_URL || 'http://127.0.0.1:54321';
 export const COOKIE_NAME = `sb-${new URL(SUPABASE_URL).hostname.split('.')[0]}-auth-token`;
+
+/** The Terms version the app asks for (lib/legal.ts). */
+export const TERMS_VERSION = readFileSync(new URL('../../lib/legal.ts', import.meta.url), 'utf8').match(/TERMS_VERSION = "([0-9-]+)"/)[1];
 
 const pad = (n) => String(n).padStart(12, '0');
 export const uid = (n) => `00000000-0000-4000-8000-${pad(n)}`;
@@ -17,10 +23,18 @@ const newId = () => uid(900000 + counter++);
 
 const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
 
-/** A session the fake accepts (the signature is not checked, the shape is). */
-export function sessionFor(userId, email, { expiresIn = 24 * 3600 } = {}) {
+/**
+ * A session the fake accepts. By default signed like a project with the older
+ * shared JWT secret (the signature is not checked, the shape is); with
+ * `es256` signed like a project with asymmetric signing keys, which proxy.ts
+ * then verifies itself against the published key (Phase 5).
+ */
+export function sessionFor(userId, email, { expiresIn = 24 * 3600, es256 = false, kid } = {}) {
   const exp = Math.floor(Date.now() / 1000) + expiresIn;
-  const token = `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64({ sub: userId, role: 'authenticated', aud: 'authenticated', exp, email })}.c2lnbmF0dXJl`;
+  const claims = { sub: userId, role: 'authenticated', aud: 'authenticated', exp, email };
+  const token = es256
+    ? signEs256({ ...claims, iss: `${SUPABASE_URL}/auth/v1`, iat: exp - expiresIn, session_id: `s-${userId}` }, { kid })
+    : `${b64({ alg: 'HS256', typ: 'JWT' })}.${b64(claims)}.c2lnbmF0dXJl`;
   return {
     access_token: token,
     token_type: 'bearer',
@@ -38,8 +52,9 @@ export function sessionCookie(session, domain = '127.0.0.1') {
 
 export function userFromToken(token) {
   try {
-    const [, payload, signature] = String(token || '').split('.');
-    if (signature !== 'c2lnbmF0dXJl') return null;
+    const [head, payload, signature] = String(token || '').split('.');
+    const alg = JSON.parse(Buffer.from(head, 'base64url').toString('utf8')).alg;
+    if (alg === 'ES256' ? !verifyEs256(token) : signature !== 'c2lnbmF0dXJl') return null;
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (!claims.sub || claims.exp * 1000 < Date.now()) return null;
     return { id: claims.sub, email: claims.email };
@@ -100,6 +115,14 @@ export function makeDb() {
     rpcCalls: [],
     writes: [],
     deletedAccount: false,
+    // Bot check (Phase 5): Supabase refuses sign-up, login and reset requests
+    // without a fresh token; each token works once.
+    captcha: { required: true, used: new Set(), seen: [] },
+    turnstileDown: false,
+    signups: [],
+    recoveries: [],
+    errorReports: [],
+    adminErrors: [],
     tables: {
       profiles, conversations, conversation_members, messages, contents, notifications,
       // Researcher 2 is a connection; 3 sent a collaboration request.
@@ -112,6 +135,8 @@ export function makeDb() {
       workspaces: [], workspace_members: [], workspace_tasks: [], workspace_files: [], workspace_milestones: [],
       workspace_meetings: [], workspace_recordings: [], workspace_updates: [],
       search_events: [], profile_view_events: [],
+      // The signed-in test user accepted the current Terms already.
+      user_consents: [{ user_id: U, terms_version: TERMS_VERSION, accepted_at: iso(1) }],
     },
   };
 }
@@ -260,6 +285,18 @@ function audit(db, action, targetType, targetId, details = {}) {
 
 function requireAdmin(db) {
   if (!db.admins.has(db.U)) throw new PgError('42501', 'Only admins can do this.');
+}
+
+/** null when the bot-check token is acceptable, else Supabase's error. */
+function captchaProblem(db, body) {
+  if (!db.captcha.required) return null;
+  const token = body?.gotrue_meta_security?.captcha_token;
+  db.captcha.seen.push(token ?? null);
+  if (db.captcha.forceFail) return { code: 'captcha_failed', error_code: 'captcha_failed', message: 'captcha protection: request disallowed (invalid-input-response)' };
+  if (!token) return { code: 'captcha_failed', error_code: 'captcha_failed', message: 'captcha protection: request disallowed (no captcha_token found)' };
+  if (db.captcha.used.has(token)) return { code: 'captcha_failed', error_code: 'captcha_failed', message: 'captcha protection: request disallowed (timeout-or-duplicate)' };
+  db.captcha.used.add(token);
+  return null;
 }
 
 function rpc(db, fn, args) {
@@ -432,12 +469,70 @@ function rpc(db, fn, args) {
     case 'admin_audit_log':
       requireAdmin(db);
       return db.audit.filter((e) => args.p_before == null || e.id < args.p_before).slice(0, args.p_limit ?? 50);
+
+    // Terms and the error log (Phase 5)
+    case 'current_terms_version':
+      return db.databaseTermsVersion ?? TERMS_VERSION;
+    case 'accept_terms': {
+      if (args.p_version !== (db.databaseTermsVersion ?? TERMS_VERSION)) throw userError('The Terms were updated. Reload the page and read the new version.');
+      if (args.p_age_confirmed !== true) throw userError('ResearchGram is for people aged 18 or older. Confirm your age to continue.');
+      t.user_consents = t.user_consents.filter((c) => c.user_id !== db.U);
+      t.user_consents.push({ user_id: db.U, terms_version: args.p_version, accepted_at: now, age_confirmed: true });
+      return now;
+    }
+    case 'report_error':
+      db.errorReports.push(args);
+      return null;
+    case 'admin_error_reports': {
+      requireAdmin(db);
+      if (db.adminErrorsFail) throw new PgError('XX000', 'The error log could not be read.');
+      const openCount = db.adminErrors.filter((e) => !e.resolved_at).length;
+      return db.adminErrors
+        .filter((e) => args.p_include_fixed || !e.resolved_at)
+        .slice(0, args.p_limit ?? 50)
+        .map((e) => ({ ...e, open_count: openCount }));
+    }
+    case 'admin_resolve_error': {
+      requireAdmin(db);
+      const report = db.adminErrors.find((e) => e.id === args.p_id && !e.resolved_at);
+      if (!report) throw new PgError('P0002', 'This error was already marked as fixed.');
+      report.resolved_at = now;
+      audit(db, 'error.fixed', 'error', String(args.p_id));
+      return null;
+    }
     default:
       return [];
   }
 }
 
 // ─── Wiring ──────────────────────────────────────────────────────────────────
+
+// Cloudflare Turnstile as the pages see it: a widget that passes at once and
+// hands out a new token whenever it is reset (each token works once).
+const FAKE_TURNSTILE = `(() => {
+  let issued = 0, ids = 0;
+  const widgets = {};
+  const issue = (id) => {
+    const w = widgets[id];
+    if (!w) return;
+    issued += 1;
+    const token = 'test-token-' + issued;
+    w.el.setAttribute('data-token', token);
+    if (w.opts.callback) w.opts.callback(token);
+  };
+  window.turnstile = {
+    render(el, opts) {
+      const id = 'w' + (++ids);
+      widgets[id] = { el, opts };
+      el.textContent = 'Security check passed (test)';
+      el.setAttribute('data-size', opts.size || '');
+      issue(id);
+      return id;
+    },
+    reset(id) { issue(id); },
+    remove(id) { delete widgets[id]; },
+  };
+})();`;
 
 const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 
@@ -451,7 +546,11 @@ export async function installFakeSupabase(page, db, { log = () => {} } = {}) {
     'access-control-allow-methods': 'GET,POST,PATCH,PUT,DELETE,HEAD,OPTIONS',
     'access-control-expose-headers': 'Content-Range, Content-Location, X-Total-Count',
   };
-  const json = (status, body, extra = {}) => ({ status, headers: { ...cors, 'content-type': 'application/json', ...extra }, body: JSON.stringify(body) });
+  // Auth errors carry their code twice, as Supabase Auth sends them ("error_code" is what supabase-js reads).
+  const json = (status, body, extra = {}) => {
+    const withCode = body && status >= 400 && typeof body.code === 'string' && !body.error_code ? { ...body, error_code: body.code } : body;
+    return { status, headers: { ...cors, 'content-type': 'application/json', ...extra }, body: JSON.stringify(withCode) };
+  };
 
   const emit = (table, type, record, oldRecord = {}) => {
     for (const [topic, ch] of channels) {
@@ -493,6 +592,26 @@ export async function installFakeSupabase(page, db, { log = () => {} } = {}) {
     if (method === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
 
     // ── Auth
+    if (url.pathname === '/auth/v1/signup' && method === 'POST') {
+      const body = JSON.parse(req.postData() || '{}');
+      const problem = captchaProblem(db, body);
+      if (problem) return route.fulfill(json(400, problem));
+      const id = newId();
+      db.signups.push({ id, email: body.email, data: body.data || {} });
+      // What the on_auth_user_created trigger does with the details.
+      db.tables.profiles.push({ id, email: body.email, full_name: body.data?.full_name ?? null, department: body.data?.department ?? null });
+      if (body.data?.terms_version === TERMS_VERSION && body.data?.age_confirmed === true) {
+        db.tables.user_consents.push({ user_id: id, terms_version: TERMS_VERSION, accepted_at: new Date().toISOString() });
+      }
+      return route.fulfill(json(200, sessionFor(id, body.email)));
+    }
+    if (url.pathname === '/auth/v1/recover' && method === 'POST') {
+      const body = JSON.parse(req.postData() || '{}');
+      const problem = captchaProblem(db, body);
+      if (problem) return route.fulfill(json(400, problem));
+      db.recoveries.push(body.email);
+      return route.fulfill(json(200, {}));
+    }
     if (url.pathname === '/auth/v1/user') {
       const user = userFromToken((req.headers().authorization || '').replace(/^Bearer /i, ''));
       if (!user || db.deletedAccount) return route.fulfill(json(401, { code: 'bad_jwt', message: 'invalid JWT' }));
@@ -501,6 +620,8 @@ export async function installFakeSupabase(page, db, { log = () => {} } = {}) {
     if (url.pathname === '/auth/v1/token') {
       const body = JSON.parse(req.postData() || '{}');
       if (url.searchParams.get('grant_type') === 'password') {
+        const problem = captchaProblem(db, body);
+        if (problem) return route.fulfill(json(400, problem));
         const me = db.tables.profiles[0];
         if (body.email !== me.email || body.password !== 'Correct-Horse-1') return route.fulfill(json(400, { code: 'invalid_credentials', error_code: 'invalid_credentials', message: 'Invalid login credentials' }));
         return route.fulfill(json(200, sessionFor(db.U, me.email)));
@@ -624,6 +745,10 @@ export async function installFakeSupabase(page, db, { log = () => {} } = {}) {
 
     return route.fulfill({ status: 404, headers: cors, body: '' });
   };
+
+  await page.route('https://challenges.cloudflare.com/**', (route) => (db.turnstileDown
+    ? route.abort('connectionfailed')
+    : route.fulfill({ status: 200, headers: { 'content-type': 'text/javascript' }, body: FAKE_TURNSTILE })));
 
   await page.route(`${SUPABASE_URL}/**`, (route) => handle(route).catch((error) => {
     if (!/closed|disposed/i.test(String(error))) console.error('fake supabase:', error);

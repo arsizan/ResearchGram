@@ -2,7 +2,9 @@
 // Supabase-like roles and schemas, a fake pgsql-http extension (answers from
 // test.http_fixtures and records every call), a fake Vault, and the repo's
 // migrations applied in order. No network and no Supabase project needed.
+// pg_trgm is the real extension (PGlite ships it), as on Supabase.
 import { PGlite } from '@electric-sql/pglite';
+import { pg_trgm } from '@electric-sql/pglite/contrib/pg_trgm';
 import { readFileSync } from 'node:fs';
 
 export const MIG = new URL('../../supabase/migrations/', import.meta.url);
@@ -17,6 +19,7 @@ export const MIGRATIONS = [
   '20261015010000_close_post_text.sql',
   '20261016000000_phase4.sql',
   '20261016010000_phase4_after_deploy.sql',
+  '20261017000000_phase5.sql',
 ];
 
 const SETUP = `
@@ -78,7 +81,7 @@ export async function applyMigration(db, file) {
 }
 
 export async function makeDb({ upTo = MIGRATIONS.length, rerun = [] } = {}) {
-  const db = new PGlite();
+  const db = new PGlite({ extensions: { pg_trgm } });
   await db.exec(SETUP);
   for (const f of MIGRATIONS.slice(0, upTo)) await applyMigration(db, f);
   for (const f of rerun) await applyMigration(db, f);

@@ -4,12 +4,18 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { logDev } from '@/lib/log'
+import { friendlyAuthError } from '@/lib/feedback'
+import { CAPTCHA_ENABLED, CAPTCHA_MISSING_MESSAGE, isCaptchaError } from '@/lib/captcha'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
+  // The bot check (Phase 5): a token works once, so each attempt asks for a new one.
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaReset, setCaptchaReset] = useState(0)
 
   const handlePasswordResetRequest = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -22,6 +28,11 @@ export default function ForgotPasswordPage() {
       return
     }
 
+    if (CAPTCHA_ENABLED && !captchaToken) {
+      setErrorMessage(CAPTCHA_MISSING_MESSAGE)
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -29,7 +40,14 @@ export default function ForgotPasswordPage() {
 
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
         redirectTo,
+        ...(CAPTCHA_ENABLED ? { captchaToken } : {}),
       })
+
+      // A failed security check says nothing about the account; say so.
+      if (error && isCaptchaError(error)) {
+        setErrorMessage(friendlyAuthError(error))
+        return
+      }
 
       if (error) {
         logDev('PASSWORD RESET REQUEST ERROR:', error)
@@ -53,6 +71,7 @@ export default function ForgotPasswordPage() {
       setErrorMessage('Something went wrong. Please try again.')
     } finally {
       setLoading(false)
+      setCaptchaReset((n) => n + 1)
     }
   }
 
@@ -85,6 +104,8 @@ export default function ForgotPasswordPage() {
               onChange={(e) => setEmail(e.target.value)}
             />
           </div>
+
+          <TurnstileWidget action="recover" onToken={setCaptchaToken} resetKey={captchaReset} />
 
           {message && (
             <p role="status" className="rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">

@@ -36,3 +36,17 @@ test('ORCID return page with an error', async ({ app, context, db }) => {
   await expect(app.getByRole('alert').filter({ hasText: 'cancelled' })).toBeVisible();
   expect(await accessibilityProblems(app)).toEqual([]);
 });
+
+// Phase 5: the main pages with their lists loaded. Since axe 4.14, text shown
+// inside a button (such as initials on an avatar) must be part of its name.
+const MAIN_PAGES = ['/feed', '/requests', '/network', '/workspace', '/notifications', '/search?q=researcher', `/researchers/${uid(2)}`];
+
+for (const path of MAIN_PAGES) {
+  test(`${path} with its data loaded`, async ({ app, context, db }) => {
+    await signIn(context, db);
+    await app.goto(path);
+    await expect(app.getByRole('heading', { level: 1 }).first()).toBeVisible();
+    await app.waitForLoadState('networkidle');
+    expect(await accessibilityProblems(app)).toEqual([]);
+  });
+}

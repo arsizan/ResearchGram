@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { confirmAction, friendlyError, notify } from "@/lib/feedback";
 import { logDev } from "@/lib/log";
 import { uploadProblem } from "@/lib/uploadRules";
+import { AVATAR_MAX_SIDE, COVER_MAX_SIDE, shrinkImage } from "@/lib/imageResize";
 import ProfileUI from "./UI";
 import { ORCID_SIGN_IN_AVAILABLE, startOrcidSignIn } from "./orcid";
 
@@ -190,7 +191,9 @@ if (profileData) {
   };
 
   // Returns null when the file is not allowed (the reason is shown to the user).
-  const uploadFile = async (file: File, folder: string, fileName: string) => {
+  // Pictures are made smaller first (Phase 5), so a large phone photo fits.
+  const uploadFile = async (original: File, folder: string, fileName: string, maxSide: number) => {
+    const file = await shrinkImage(original, maxSide);
     const problem = uploadProblem(file, { imagesOnly: true });
     if (problem) {
       notify(problem, "error");
@@ -228,6 +231,7 @@ if (profileData) {
         profilePicFile,
         userId,
         `profile-${Date.now()}`,
+        AVATAR_MAX_SIDE,
       );
 
       if (!url) return;
@@ -264,6 +268,7 @@ if (profileData) {
         coverPhotoFile,
         userId,
         `cover-${Date.now()}`,
+        COVER_MAX_SIDE,
       );
 
       if (!url) return;

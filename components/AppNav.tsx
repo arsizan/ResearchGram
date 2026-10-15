@@ -7,6 +7,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import NotificationBell from "@/components/NotificationBell";
 import BrandLogo from "@/components/BrandLogo";
+import TermsGate from "@/components/TermsGate";
 import {
   Search,
   Home,
@@ -408,9 +409,12 @@ useEffect(() => {
               Logout
             </button>
 
+            {/* The name includes the initials shown in place of a photo, so
+                what is seen is also what is announced (WCAG 2.5.3). No
+                brackets: checkers skip text inside them. */}
             <Link
               href="/profile"
-              aria-label="Your profile"
+              aria-label={profilePicUrl ? "Your profile" : `Your profile, ${userInitials}`}
               className="w-9 h-9 rounded-full overflow-hidden hover:ring-2 hover:ring-primary hover:ring-offset-1 transition-all flex-shrink-0 flex items-center justify-center text-white text-sm font-bold"
               style={{ backgroundColor: "#4f46e5" }}
             >
@@ -461,6 +465,9 @@ useEffect(() => {
           ))}
         </div>
       </nav>
+
+      {/* Older accounts accept the Terms and Privacy Policy once (Phase 5). */}
+      {userId && <TermsGate key={userId} userId={userId} />}
     </>
   );
 }

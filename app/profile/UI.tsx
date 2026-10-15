@@ -948,6 +948,15 @@ handleProfilePicSelect,
                 </button>
               </div>
 
+              <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <Link href="/privacy" className="font-semibold text-muted-foreground hover:text-foreground hover:underline">
+                  Privacy Policy
+                </Link>
+                <Link href="/terms" className="font-semibold text-muted-foreground hover:text-foreground hover:underline">
+                  Terms of Service
+                </Link>
+              </p>
+
               {handleDeleteAccount && (
                 <div className="mt-4 border-t border-border pt-4">
                   {!showDeleteAccount ? (

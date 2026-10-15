@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportError } from "@/lib/errorReport";
 
 /**
  * Last-resort boundary: catches errors thrown by the root layout itself, where
@@ -15,7 +16,8 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // TODO(observability): forward to Sentry once it is wired up.
+    // Into the error log admins see in /admin (Phase 5).
+    reportError(error, { digest: error.digest });
     console.error("Fatal application error:", error);
   }, [error]);
 

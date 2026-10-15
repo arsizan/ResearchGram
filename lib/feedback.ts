@@ -1,3 +1,5 @@
+import { isCaptchaError } from "@/lib/captcha";
+
 /*
  * Messages and questions for the user, shown by <FeedbackHost /> (mounted once
  * in the root layout) instead of the browser's alert(), confirm() and prompt()
@@ -236,6 +238,10 @@ export function friendlyAuthError(error: unknown, fallback = "Something went wro
   const e = (typeof error === "object" ? error : { message: String(error) }) as ErrorLike;
   const code = e.code === undefined || e.code === null ? "" : String(e.code);
   const message = (e.message || "").toLowerCase();
+
+  if (isCaptchaError(e)) {
+    return "The security check failed or expired. Complete it again, then retry.";
+  }
 
   if (code === "invalid_credentials" || message.includes("invalid login credentials")) {
     return "Email or password is incorrect.";

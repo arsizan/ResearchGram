@@ -15,7 +15,16 @@ import { NextResponse, type NextRequest } from "next/server";
  * of logging everyone out.
  */
 
-const PUBLIC_PAGES = new Set(["/", "/auth/login", "/auth/signup", "/auth/forgot-password", "/auth/reset-password"]);
+const PUBLIC_PAGES = new Set([
+  "/",
+  "/auth/login",
+  "/auth/signup",
+  "/auth/forgot-password",
+  "/auth/reset-password",
+  // Readable before signing up (linked from the sign-up form).
+  "/privacy",
+  "/terms",
+]);
 
 function isPublicPage(pathname: string) {
   return PUBLIC_PAGES.has(pathname) || pathname.startsWith("/auth/");
@@ -27,18 +36,47 @@ function isPublicPage(pathname: string) {
 const AUTH_FETCH_TIMEOUT_MS = 3000;
 const AUTH_CHECK_DEADLINE_MS = 4000;
 
-const fetchWithTimeout: typeof fetch = (input, init) => {
-  const timeout = AbortSignal.timeout(AUTH_FETCH_TIMEOUT_MS);
-  const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
-  return fetch(input, { ...init, signal });
-};
+// A fetch that stops at the deadline. After it, no new call starts: the
+// Supabase client would otherwise keep retrying a slow session refresh in the
+// background, and a refresh that succeeds after the page was served replaces
+// the session without the browser ever getting the new cookies. (408 is an
+// answer the client does not retry.)
+function fetchUntil(deadline: number): typeof fetch {
+  return (input, init) => {
+    const left = deadline - Date.now();
+    if (left <= 0) {
+      return Promise.resolve(
+        new Response(JSON.stringify({ code: "request_timeout", message: "The sign-in check took too long." }), {
+          status: 408,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    }
+    const timeout = AbortSignal.timeout(Math.min(AUTH_FETCH_TIMEOUT_MS, left));
+    const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
+    return fetch(input, { ...init, signal });
+  };
+}
 
-// Supabase answered that this session is over: expired or revoked refresh
-// token, invalid token, unknown user. Anything else (no answer, a time-out, a
-// rate limit, a server error) says nothing about the session.
-function sessionIsOver(error: { status?: number } | null) {
-  const status = error?.status ?? 0;
-  return status === 400 || status === 401 || status === 403 || status === 404;
+// Supabase Auth answered that this session is over: an invalid or forged
+// token, an expired or revoked refresh token, a deleted or banned user, no
+// session. Anything else (no answer, a time-out, a rate limit, a server error,
+// the public keys not loading) says nothing about the session.
+const SESSION_OVER_CODES = new Set([
+  "bad_jwt",
+  "invalid_jwt",
+  "session_not_found",
+  "session_expired",
+  "refresh_token_not_found",
+  "refresh_token_already_used",
+  "user_not_found",
+  "user_banned",
+]);
+
+function sessionIsOver(error: { name?: string; code?: string } | null) {
+  if (!error) return false;
+  if (error.name === "AuthInvalidJwtError" || error.name === "AuthSessionMissingError") return true;
+  return typeof error.code === "string" && SESSION_OVER_CODES.has(error.code);
 }
 
 type CookieChange = { name: string; value: string; options: CookieOptions };
@@ -75,7 +113,7 @@ export async function proxy(request: NextRequest) {
           cacheHeaders = { ...cacheHeaders, ...(headers ?? {}) };
         },
       },
-      global: { fetch: fetchWithTimeout },
+      global: { fetch: fetchUntil(Date.now() + AUTH_CHECK_DEADLINE_MS) },
     });
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -97,8 +135,11 @@ export async function proxy(request: NextRequest) {
       } else {
         signedIn = null;
       }
-    } catch {
-      signedIn = null;
+    } catch (error) {
+      // The client throws only for a token it cannot read (broken encoding, an
+      // unknown algorithm): signed out. A key the server published that cannot
+      // be used is Supabase's problem, not the session's: no clear answer.
+      signedIn = typeof DOMException !== "undefined" && error instanceof DOMException ? null : false;
     } finally {
       clearTimeout(timer);
     }

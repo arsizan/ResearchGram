@@ -5,6 +5,8 @@ import Link from "next/link";
 import { safeNextPath, supabase } from "@/lib/supabase";
 import { getCurrentUserSafe } from "@/lib/authSafe";
 import { friendlyAuthError } from "@/lib/feedback";
+import { CAPTCHA_ENABLED, CAPTCHA_MISSING_MESSAGE } from "@/lib/captcha";
+import TurnstileWidget from "@/components/TurnstileWidget";
 
 // Where to go after logging in: the page that sent the visitor here
 // (proxy.ts adds ?next=), or the profile.
@@ -25,6 +27,9 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  // The bot check (Phase 5): a token works once, so each attempt asks for a new one.
+  const [captchaToken, setCaptchaToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
 
   // Already signed in (for example a session kept from before this update):
   // go straight on instead of showing the form.
@@ -57,6 +62,11 @@ export default function LoginPage() {
       return;
     }
 
+    if (CAPTCHA_ENABLED && !captchaToken) {
+      setErrorMessage(CAPTCHA_MISSING_MESSAGE);
+      return;
+    }
+
     setLoading(true);
     let leaving = false;
 
@@ -64,6 +74,7 @@ export default function LoginPage() {
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
+        ...(CAPTCHA_ENABLED ? { options: { captchaToken } } : {}),
       });
 
       if (error) {
@@ -77,7 +88,10 @@ export default function LoginPage() {
       setErrorMessage(friendlyAuthError(error, "Could not log in. Please try again."));
     } finally {
       // While the next page loads, the button keeps saying "Logging in...".
-      if (!leaving) setLoading(false);
+      if (!leaving) {
+        setLoading(false);
+        setCaptchaReset((n) => n + 1);
+      }
     }
   };
 
@@ -134,6 +148,8 @@ export default function LoginPage() {
               Forgot password?
             </Link>
           </div>
+
+          <TurnstileWidget action="login" onToken={setCaptchaToken} resetKey={captchaReset} />
 
           {errorMessage && (
             <p

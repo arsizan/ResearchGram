@@ -1,11 +1,14 @@
 'use client'
 
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
 import { logDev } from '@/lib/log'
 import { PASSWORD_HINT, passwordProblem } from '@/lib/passwordPolicy'
 import { friendlyAuthError } from '@/lib/feedback'
+import { CAPTCHA_ENABLED, CAPTCHA_MISSING_MESSAGE } from '@/lib/captcha'
+import { MINIMUM_AGE, TERMS_VERSION } from '@/lib/legal'
+import TurnstileWidget from '@/components/TurnstileWidget'
 
 export default function SignUpPage() {
   const [email, setEmail] = useState('')
@@ -13,6 +16,17 @@ export default function SignUpPage() {
   const [fullName, setFullName] = useState('')
   const [department, setDepartment] = useState('')
   const [skills, setSkills] = useState('')
+  // Consent (Phase 5): both boxes are required. The version and the age
+  // confirmation are stored with the account (public.user_consents).
+  const [ageConfirmed, setAgeConfirmed] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  // Which box the message is about, so it is marked and announced with it.
+  const [consentProblem, setConsentProblem] = useState<'' | 'age' | 'terms'>('')
+  const ageRef = useRef<HTMLInputElement>(null)
+  const termsRef = useRef<HTMLInputElement>(null)
+  // The bot check: a token works once, so each attempt asks for a new one.
+  const [captchaToken, setCaptchaToken] = useState('')
+  const [captchaReset, setCaptchaReset] = useState(0)
 
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
@@ -36,6 +50,7 @@ export default function SignUpPage() {
     if (loading) return
 
     setMessage('')
+    setConsentProblem('')
 
     if (!fullName.trim()) {
       showError('Please enter your full name.')
@@ -58,6 +73,25 @@ export default function SignUpPage() {
       return
     }
 
+    if (!ageConfirmed) {
+      showError(`ResearchGram accounts are for people aged ${MINIMUM_AGE} or older. Tick the box to confirm your age.`)
+      setConsentProblem('age')
+      ageRef.current?.focus()
+      return
+    }
+
+    if (!termsAccepted) {
+      showError('Accept the Terms of Service and the Privacy Policy to create an account.')
+      setConsentProblem('terms')
+      termsRef.current?.focus()
+      return
+    }
+
+    if (CAPTCHA_ENABLED && !captchaToken) {
+      showError(CAPTCHA_MISSING_MESSAGE)
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -72,7 +106,10 @@ export default function SignUpPage() {
             full_name: fullName.trim(),
             department: department.trim(),
             skills: skills.trim(),
+            terms_version: TERMS_VERSION,
+            age_confirmed: true,
           },
+          ...(CAPTCHA_ENABLED ? { captchaToken } : {}),
         },
       })
 
@@ -105,6 +142,7 @@ export default function SignUpPage() {
       showError(friendlyAuthError(err, 'Signup failed. Please try again.'))
     } finally {
       setLoading(false)
+      setCaptchaReset((n) => n + 1)
     }
   }
 
@@ -194,8 +232,59 @@ export default function SignUpPage() {
             />
           </div>
 
+          <fieldset className="space-y-3 rounded-xl border border-gray-200 p-4">
+            <legend className="px-1 text-sm font-medium text-gray-700">Before you join</legend>
+
+            <label htmlFor="signup-age" className="flex items-start gap-3 text-sm text-gray-700">
+              <input
+                ref={ageRef}
+                id="signup-age"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-black"
+                checked={ageConfirmed}
+                aria-invalid={consentProblem === 'age' || undefined}
+                aria-describedby={consentProblem === 'age' ? 'signup-message' : undefined}
+                onChange={(e) => {
+                  setAgeConfirmed(e.target.checked)
+                  if (consentProblem === 'age') setConsentProblem('')
+                }}
+              />
+              <span>I am {MINIMUM_AGE} years old or older.</span>
+            </label>
+
+            <label htmlFor="signup-terms" className="flex items-start gap-3 text-sm text-gray-700">
+              <input
+                ref={termsRef}
+                id="signup-terms"
+                type="checkbox"
+                className="mt-0.5 h-4 w-4 shrink-0 accent-black"
+                checked={termsAccepted}
+                aria-invalid={consentProblem === 'terms' || undefined}
+                aria-describedby={consentProblem === 'terms' ? 'signup-message' : undefined}
+                onChange={(e) => {
+                  setTermsAccepted(e.target.checked)
+                  if (consentProblem === 'terms') setConsentProblem('')
+                }}
+              />
+              <span>
+                I agree to the{' '}
+                <Link href="/terms" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 underline hover:no-underline">
+                  Terms of Service
+                </Link>{' '}
+                and the{' '}
+                <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 underline hover:no-underline">
+                  Privacy Policy
+                </Link>
+                .
+              </span>
+            </label>
+          </fieldset>
+
+          <TurnstileWidget action="signup" onToken={setCaptchaToken} resetKey={captchaReset} />
+
           {message && (
             <p
+              id="signup-message"
               role={messageIsError ? 'alert' : 'status'}
               className={`rounded-xl px-4 py-3 text-sm ${
                 messageIsError ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'

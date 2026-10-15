@@ -12,6 +12,21 @@ updates:
         update-types:
           - minor
           - patch
+    # New major versions the lint tools cannot use yet (checked October 2026).
+    # Delete a rule once eslint-config-next supports that version.
+    ignore:
+      # typescript-eslint, used by eslint-config-next, needs TypeScript below
+      # 6.1; TypeScript 7 has no JavaScript API for it yet.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      # eslint-plugin-react, -import and -jsx-a11y, pulled in by
+      # eslint-config-next 16, support ESLint 9 at most.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      # The types should describe the Node.js version that runs the app (22),
+      # not the newest one.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import ResearchAssistant from "@/components/assistant/ResearchAssistant";
 import FeedbackHost from "@/components/FeedbackHost";
+import ErrorReporter from "@/components/ErrorReporter";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 /*
@@ -127,6 +128,9 @@ export default function RootLayout({
 
         {/* Messages and questions from lib/feedback.ts (replaces alert/confirm, audit RG-27). */}
         <FeedbackHost />
+
+        {/* Errors nothing else caught go to the error log in /admin (Phase 5). */}
+        <ErrorReporter />
       </body>
     </html>
   );

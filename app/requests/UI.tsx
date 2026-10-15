@@ -401,9 +401,10 @@ function RequestCard({
             </span>
           </div>
 
-          <h3 className="mt-2 text-[15px] font-bold text-foreground">
+          {/* h2: the page title is the only heading above the cards. */}
+          <h2 className="mt-2 text-[15px] font-bold text-foreground">
             {requestTitle(request)}
-          </h3>
+          </h2>
 
           {otherProfile?.id ? (
             <button

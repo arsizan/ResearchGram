@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, FileText, History, ShieldCheck, Users } from "lucide-react";
+import { AlertTriangle, Bug, FileText, History, ShieldCheck, Users } from "lucide-react";
 import AppNav from "@/components/AppNav";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { supabase } from "@/lib/supabase";
@@ -11,8 +11,9 @@ import { confirmAction, friendlyError, notify } from "@/lib/feedback";
 import { logDev } from "@/lib/log";
 
 /*
- * Admin console: numbers at a glance, the moderation queue (reported posts)
- * and the audit log. Everything here comes from admin-only database functions;
+ * Admin console: numbers at a glance, the moderation queue (reported posts),
+ * the error log (Phase 5) and the audit log. Everything here comes from
+ * admin-only database functions;
  * a person who is not in public.admins gets nothing back, whatever this page
  * does. Admins are added in the SQL editor (see supabase/README.md).
  */
@@ -56,6 +57,23 @@ type AuditEntry = {
   details: Record<string, unknown> | null;
 };
 
+type ErrorReport = {
+  id: number;
+  source: "browser" | "server";
+  message: string;
+  stack: string | null;
+  path: string | null;
+  digest: string | null;
+  user_agent: string | null;
+  signed_in: boolean;
+  occurrences: number;
+  first_seen: string;
+  last_seen: string;
+  resolved_at: string | null;
+  /** How many errors are open in all (the list itself stops at 50). */
+  open_count: number | string;
+};
+
 type QueueTab = "pending" | "resolved";
 
 const QUEUE_PAGE = 20;
@@ -73,6 +91,7 @@ const ACTION_LABELS: Record<string, string> = {
   "paper_access.rejected": "Paper access rejected",
   "workspace.member_added": "Workspace member added",
   "workspace.member_removed": "Workspace member removed",
+  "error.fixed": "Error marked as fixed",
 };
 
 function formatDate(value: string | null) {
@@ -119,6 +138,14 @@ export default function AdminClient() {
 
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [busyPostId, setBusyPostId] = useState("");
+
+  const [errors, setErrors] = useState<ErrorReport[]>([]);
+  const [showFixedErrors, setShowFixedErrors] = useState(false);
+  const [loadingErrors, setLoadingErrors] = useState(false);
+  const [errorsProblem, setErrorsProblem] = useState(false);
+  const [openErrors, setOpenErrors] = useState(0);
+  const [busyErrorIds, setBusyErrorIds] = useState<Set<number>>(() => new Set());
+  const errorsHeadingRef = useRef<HTMLHeadingElement>(null);
 
   const loadOverview = useCallback(async () => {
     const { data, error } = await supabase.rpc("admin_overview");
@@ -176,6 +203,33 @@ export default function AdminClient() {
     }
   }, []);
 
+  const loadErrors = useCallback(async (includeFixed: boolean) => {
+    setLoadingErrors(true);
+    try {
+      const { data, error } = await supabase.rpc("admin_error_reports", {
+        p_include_fixed: includeFixed,
+        p_limit: 50,
+      });
+
+      if (error) {
+        logDev("ADMIN ERRORS ERROR:", error);
+        setErrorsProblem(true);
+        return;
+      }
+
+      const rows = (data || []) as ErrorReport[];
+      setErrorsProblem(false);
+      setErrors(rows);
+      if (rows.length > 0) setOpenErrors(Number(rows[0].open_count) || 0);
+      else if (!includeFixed) setOpenErrors(0);
+    } catch (error) {
+      logDev("ADMIN ERRORS ERROR:", error);
+      setErrorsProblem(true);
+    } finally {
+      setLoadingErrors(false);
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -195,7 +249,7 @@ export default function AdminClient() {
         setIsAdmin(admin);
 
         if (admin) {
-          await Promise.all([loadOverview(), loadQueue("pending", 0), loadAudit(null)]);
+          await Promise.all([loadOverview(), loadQueue("pending", 0), loadErrors(false), loadAudit(null)]);
         }
       } catch (error) {
         if (!isAuthLockError(error)) logDev("ADMIN LOAD ERROR:", error);
@@ -209,7 +263,7 @@ export default function AdminClient() {
     return () => {
       cancelled = true;
     };
-  }, [router, loadOverview, loadQueue, loadAudit]);
+  }, [router, loadOverview, loadQueue, loadErrors, loadAudit]);
 
   const switchQueueTab = (tab: QueueTab) => {
     if (tab === queueTab) return;
@@ -220,6 +274,41 @@ export default function AdminClient() {
 
   const refreshAfterAction = async () => {
     await Promise.all([loadOverview(), loadQueue(queueTab, 0), loadAudit(null)]);
+  };
+
+  const toggleFixedErrors = () => {
+    const next = !showFixedErrors;
+    setShowFixedErrors(next);
+    void loadErrors(next);
+  };
+
+  const setErrorBusy = (id: number, busy: boolean) =>
+    setBusyErrorIds((current) => {
+      const next = new Set(current);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  const handleFixError = async (report: ErrorReport) => {
+    if (busyErrorIds.has(report.id)) return;
+    setErrorBusy(report.id, true);
+    try {
+      const { error } = await supabase.rpc("admin_resolve_error", { p_id: report.id });
+
+      if (error) {
+        logDev("FIX ERROR ERROR:", error);
+        notify(friendlyError(error, "Could not mark the error as fixed."), "error");
+        return;
+      }
+
+      notify("Marked as fixed. If it happens again, it comes back to the list.", "success");
+      await Promise.all([loadErrors(showFixedErrors), loadAudit(null)]);
+      // The item is gone from the list: keep the keyboard in this section.
+      errorsHeadingRef.current?.focus();
+    } finally {
+      setErrorBusy(report.id, false);
+    }
   };
 
   const handleDismiss = async (post: ReportedPost) => {
@@ -356,7 +445,7 @@ export default function AdminClient() {
           <div>
             <h1 className="text-2xl font-extrabold text-foreground">Admin console</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Moderation and the audit log. Every action here is recorded.
+              Moderation, the error log and the audit log. Every action here is recorded.
             </p>
           </div>
           {overview && (
@@ -508,11 +597,101 @@ export default function AdminClient() {
           )}
         </section>
 
+        <section aria-labelledby="admin-errors" className="rounded-2xl border border-border bg-card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2
+              id="admin-errors"
+              ref={errorsHeadingRef}
+              tabIndex={-1}
+              className="flex items-center gap-2 text-lg font-bold text-foreground focus:outline-none"
+            >
+              <Bug className="h-4 w-4 text-primary" aria-hidden="true" />
+              Errors
+              {openErrors > 0 && (
+                <span className="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800">
+                  {openErrors} open
+                </span>
+              )}
+            </h2>
+            <button
+              type="button"
+              aria-pressed={showFixedErrors}
+              onClick={toggleFixedErrors}
+              className="rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted"
+            >
+              {showFixedErrors ? "Hide fixed ones" : "Show fixed ones too"}
+            </button>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Errors from people&rsquo;s browsers and from the server, grouped by message and page. Kept 30 days after
+            they were last seen. No account or page content is recorded; anyone can send a report, so treat them as
+            hints.{openErrors > errors.filter((e) => !e.resolved_at).length ? " The newest 50 are shown." : ""}
+          </p>
+
+          {errorsProblem ? (
+            <div role="alert" className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              <p>Could not load the error log.</p>
+              <button
+                type="button"
+                disabled={loadingErrors}
+                onClick={() => loadErrors(showFixedErrors)}
+                className="mt-2 font-semibold underline underline-offset-2 hover:no-underline disabled:opacity-50"
+              >
+                Try again
+              </button>
+            </div>
+          ) : errors.length === 0 && !loadingErrors ? (
+            <p className="mt-4 text-sm text-muted-foreground">No errors. Nice.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {errors.map((report) => (
+                <li key={report.id} className="rounded-xl border border-border p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="min-w-0 break-words font-mono text-xs font-semibold text-foreground">{report.message}</p>
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-bold text-foreground">
+                      {report.occurrences}×
+                    </span>
+                  </div>
+                  <p className="mt-1 break-all text-xs text-muted-foreground">
+                    {report.source === "server" ? "Server" : "Browser"}
+                    {report.path ? ` · ${report.path}` : ""}
+                    {` · last ${formatDate(report.last_seen)} · first ${formatDate(report.first_seen)}`}
+                    {report.signed_in ? " · signed-in people" : " · signed-out visitors"}
+                    {report.resolved_at ? ` · fixed ${formatDate(report.resolved_at)}` : ""}
+                  </p>
+                  {(report.stack || report.user_agent || report.digest) && (
+                    <details className="mt-2 text-xs">
+                      <summary className="cursor-pointer font-semibold text-primary">Details</summary>
+                      {report.digest && <p className="mt-2 text-muted-foreground">Reference: {report.digest}</p>}
+                      {report.user_agent && <p className="mt-1 break-words text-muted-foreground">{report.user_agent}</p>}
+                      {report.stack && (
+                        <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-3 font-mono text-[11px] text-foreground">
+                          {report.stack}
+                        </pre>
+                      )}
+                    </details>
+                  )}
+                  {!report.resolved_at && (
+                    <button
+                      type="button"
+                      disabled={busyErrorIds.has(report.id)}
+                      onClick={() => handleFixError(report)}
+                      className="mt-3 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted disabled:opacity-50"
+                    >
+                      {busyErrorIds.has(report.id) ? "Saving…" : "Mark as fixed"}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section aria-labelledby="admin-audit" className="rounded-2xl border border-border bg-card p-5">
           <h2 id="admin-audit" className="text-lg font-bold text-foreground">Audit log</h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Admin actions, account deletions and data downloads, ORCID verifications, paper-access
-            decisions and workspace membership changes.
+            decisions, workspace membership changes and errors marked as fixed.
           </p>
 
           {audit.length === 0 && !loadingAudit ? (

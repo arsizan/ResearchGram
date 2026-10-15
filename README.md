@@ -37,15 +37,17 @@ Open <http://localhost:3000>. `.env.example` lists every setting; only the two
 | `npm run typecheck` | TypeScript, no output |
 | `npm run test:db` | Database tests: every migration applied to an in-memory Postgres (PGlite), then the rules checked as each kind of user |
 | `npm run test:e2e` | Browser tests (Playwright) against a production build with a fake Supabase |
-| `npm test` | Both |
+| `npm run test:scripts` | Tests for the stored-files backup script, against a fake storage |
+| `npm test` | All three |
+| `npm run backup:files` | Copies every stored file to a folder on this computer (`docs/runbook.md`) |
 | `npm run check:apis` | Checks the OpenAlex and Semantic Scholar settings |
 | `npm run check:ai` | Lists the Gemini models your key can use and runs one test call |
 
 The browser tests need Chromium once: `npx playwright install chromium`. They build
 the app into `.next-e2e/` with test settings, so a normal build is not touched.
 
-GitHub Actions runs lint, typecheck, build, the database tests, the browser tests and
-a dependency audit on every push to `main` and on pull requests.
+GitHub Actions runs lint, typecheck, build, the database tests, the script tests, the
+browser tests and a dependency audit on every push to `main` and on pull requests.
 
 ## Database
 
@@ -65,7 +67,11 @@ Security model:
   request and the chat or connection it opens, a post and its files) are single
   database functions, so they succeed or fail together.
 - The session is kept in cookies. `proxy.ts` checks it on the server before any
-  private page is served and sends signed-out visitors to the login page.
+  private page is served and sends signed-out visitors to the login page. Once
+  Supabase signs sessions with asymmetric keys, the check runs on the server itself
+  against the project's public keys, without a call to Supabase Auth.
+- Sign-up, login and "forgot password" carry a Cloudflare Turnstile bot check,
+  which Supabase Auth verifies (the secret key stays in Supabase).
 - Every page is sent with a Content-Security-Policy and the other security headers
   (`next.config.ts`).
 - The service-role key is only used by the scripts in `scripts/`, never by the app.
@@ -73,8 +79,12 @@ Security model:
 ## Accounts, moderation and data
 
 - **Admin console** (`/admin`): the reported-posts queue (dismiss or remove, the
-  author is told why) and the audit log. Admins are added in SQL; see
+  author is told why), the error log (problems from browsers and the server,
+  grouped, with "Mark as fixed") and the audit log. Admins are added in SQL; see
   `supabase/README.md`.
+- **Privacy Policy** (`/privacy`) and **Terms** (`/terms`): members must be 18 or
+  older and accept the current version; the database records which version each
+  member accepted, and older accounts are asked once after a change.
 - **Audit log**: admin actions, account deletions and data downloads, ORCID
   verifications, paper-access decisions and workspace membership changes.
 - **Download my data** and **Delete my account** are on the profile page.
@@ -94,7 +104,7 @@ Security model:
 | `tests/db/` | Database tests (PGlite) |
 | `tests/e2e/` | Browser tests (Playwright) and the fake Supabase they use |
 | `docs/` | Operations: backups, incidents, admin tasks |
-| `scripts/` | One-off maintenance and API check scripts |
+| `scripts/` | Maintenance (stored-files backup) and API check scripts |
 
 ## Fonts and pictures
 
