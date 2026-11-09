@@ -114,11 +114,13 @@ export default function OnboardingUI({
           <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
             <div>
               <h1 className="text-3xl font-bold text-gray-950">
-                Complete your ResearchGram profile
+                {/* 9 Nov 2026: AcademicOrbit rename */}
+                Complete your AcademicOrbit profile
               </h1>
 
               <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                This information helps ResearchGram suggest better researchers,
+                {/* 9 Nov 2026: AcademicOrbit rename */}
+                This information helps AcademicOrbit suggest better researchers,
                 alumni, mentors, collaborators, papers, and workspaces for you.
               </p>
 

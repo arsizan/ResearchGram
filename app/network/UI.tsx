@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import {
   ArrowRight,
   Briefcase,
@@ -82,14 +83,16 @@ function formatTime(dateString: string | null) {
 
 function getProfileName(profile: Profile | null) {
   return (
-    profile?.full_name || profile?.email?.split("@")[0] || "ResearchGram User"
+    // 9 Nov 2026: AcademicOrbit rename
+    profile?.full_name || profile?.email?.split("@")[0] || "AcademicOrbit User"
   );
 }
 
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/);
 
-  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "RG";
+  // 9 Nov 2026: AcademicOrbit rename
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "AO";
 }
 
 function colorFromString(value: string) {
@@ -413,7 +416,8 @@ export default function NetworkUI({
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
 
   if (loading) {
-    return <ResearchGramSkeleton activePage="network" variant="network" />;
+    // 9 Nov 2026: AcademicOrbit rename
+    return <AppSkeleton activePage="network" variant="network" />;
   }
 
   const hasConnections = connections.length > 0;

@@ -411,7 +411,8 @@ function rpc(db, fn, args) {
       return db.storage.filter((o) => o.owner === db.U).map((o) => ({ bucket_id: o.bucket, name: o.path }));
     case 'export_my_data':
       audit(db, 'account.exported', 'user', db.U);
-      return { format: 'researchgram-export-1', exported_at: now, profile: t.profiles.find((p) => p.id === db.U), posts: t.contents.filter((c) => c.user_id === db.U), messages_sent: t.messages.filter((m) => m.sender_id === db.U) };
+      // 9 Nov 2026: AcademicOrbit rename
+      return { format: 'academicorbit-export-1', exported_at: now, profile: t.profiles.find((p) => p.id === db.U), posts: t.contents.filter((c) => c.user_id === db.U), messages_sent: t.messages.filter((m) => m.sender_id === db.U) };
     case 'delete_my_account': {
       if (args.p_confirm !== 'DELETE') throw userError('Type DELETE to confirm.');
       if (db.storage.some((o) => o.owner === db.U)) throw userError('Some of your files could not be deleted yet. Try again.');
@@ -475,7 +476,8 @@ function rpc(db, fn, args) {
       return db.databaseTermsVersion ?? TERMS_VERSION;
     case 'accept_terms': {
       if (args.p_version !== (db.databaseTermsVersion ?? TERMS_VERSION)) throw userError('The Terms were updated. Reload the page and read the new version.');
-      if (args.p_age_confirmed !== true) throw userError('ResearchGram is for people aged 18 or older. Confirm your age to continue.');
+      // 9 Nov 2026: AcademicOrbit rename
+      if (args.p_age_confirmed !== true) throw userError('AcademicOrbit is for people aged 18 or older. Confirm your age to continue.');
       t.user_consents = t.user_consents.filter((c) => c.user_id !== db.U);
       t.user_consents.push({ user_id: db.U, terms_version: args.p_version, accepted_at: now, age_confirmed: true });
       return now;
@@ -722,7 +724,8 @@ export async function installFakeSupabase(page, db, { log = () => {} } = {}) {
           const row = { id: newId(), created_at: new Date().toISOString(), ...r };
           if (table === 'workspace_meetings') {
             // The database makes the room name (RG-22).
-            row.room_name = `ResearchGram-${row.id.replace(/-/g, '')}`;
+            // 9 Nov 2026: AcademicOrbit rename
+            row.room_name = `AcademicOrbit-${row.id.replace(/-/g, '')}`;
             row.meeting_url = `https://meet.jit.si/${row.room_name}`;
           }
           (db.tables[table] ||= []).push(row);

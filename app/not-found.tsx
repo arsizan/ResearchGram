@@ -34,7 +34,8 @@ export default function NotFound() {
             href="/search"
             className="rounded-xl border border-border px-5 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
           >
-            Search ResearchGram
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            Search AcademicOrbit
           </Link>
         </div>
       </div>

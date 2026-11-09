@@ -75,7 +75,8 @@ function getDisplayName(profile: Profile | null) {
   return (
     profile?.full_name ||
     profile?.email?.split("@")[0] ||
-    "ResearchGram User"
+    // 9 Nov 2026: AcademicOrbit rename
+    "AcademicOrbit User"
   );
 }
 

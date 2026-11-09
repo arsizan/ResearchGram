@@ -1142,7 +1142,8 @@ export default function MessagesClient() {
         : "Chat unmuted.",
       "success",
     );
-    window.dispatchEvent(new Event("researchgram:refresh-nav-counts"));
+    // 9 Nov 2026: AcademicOrbit rename
+    window.dispatchEvent(new Event("academicorbit:refresh-nav-counts"));
   };
 
   // Text, a file, a voice message, or text with one of them. The chat moves

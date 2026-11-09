@@ -2,7 +2,8 @@
 
 import type { Dispatch, SetStateAction } from "react";
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import {
   Search,
   ExternalLink,
@@ -216,7 +217,8 @@ export default function DiscoverUI({
   handleExampleSearch,
 }: DiscoverUIProps) {
   if (checkingAuth) {
-    return <ResearchGramSkeleton activePage="search" variant="generic" />;
+    // 9 Nov 2026: AcademicOrbit rename
+    return <AppSkeleton activePage="search" variant="generic" />;
   }
 
   const degraded =

@@ -13,7 +13,8 @@ const check = async (label, fn) => {
 };
 
 const PHASE5 = '20261017000000_phase5.sql';
-assert.equal(MIGRATIONS[MIGRATIONS.length - 1], PHASE5);
+// 9 Nov 2026: AcademicOrbit rename
+assert.ok(MIGRATIONS.includes(PHASE5));
 
 // ---------------------------------------------------------------- 0. same row rules, written the fast way
 const policies = async (db) => Object.fromEntries((await db.query(
@@ -397,7 +398,8 @@ await check('error log', async () => {
   const id1 = uid(4001), id2 = uid(4002);
   const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl';
   await report(null, ['browser', `Profile ${id1} of rahman.sizan@gmail.com failed with ${jwt}`,
-    `at load (https://research-gram.vercel.app/_next/static/chunks/a.js?dpl=dpl_123:1:2)\nat /auth/reset-password?token_hash=abc&type=recovery`,
+    // 9 Nov 2026: AcademicOrbit rename
+    `at load (https://www.academicorbit.com/_next/static/chunks/a.js?dpl=dpl_123:1:2)\nat /auth/reset-password?token_hash=abc&type=recovery`,
     `/researchers/${id1}`, null, null]);
   await report(null, ['browser', `Profile ${id2} of other.person@uni.ac.bd failed with ${jwt}x`, null, `/researchers/${id2}`, null, null]);
   const scrubbed = await q(`select * from public.error_reports where message like 'Profile%'`);

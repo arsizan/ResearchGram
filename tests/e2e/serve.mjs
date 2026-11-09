@@ -12,7 +12,8 @@ const env = {
   NEXT_PUBLIC_ORCID_BASE_URL: 'https://sandbox.orcid.org',
   // Cloudflare's always-pass test site key; the widget itself is faked in fake-supabase.mjs.
   NEXT_PUBLIC_TURNSTILE_SITE_KEY: '1x00000000000000000000AA',
-  NEXT_PUBLIC_CONTACT_EMAIL: 'help@researchgram.test',
+  // 9 Nov 2026: AcademicOrbit rename
+  NEXT_PUBLIC_CONTACT_EMAIL: 'help@academicorbit.test',
   NEXT_DIST_DIR: '.next-e2e',
   NEXT_TELEMETRY_DISABLED: '1',
 };

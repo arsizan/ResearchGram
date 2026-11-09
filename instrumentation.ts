@@ -2,7 +2,8 @@ import type { Instrumentation } from "next";
 
 /*
  * Errors on the server (a page or API route that failed while rendering or
- * running, or proxy.ts) go to ResearchGram's error log (Phase 5), the same
+ * 9 Nov 2026: AcademicOrbit rename.
+ * running, or proxy.ts) go to AcademicOrbit's error log (Phase 5), the same
  * place as browser errors: public.report_error(), shown in /admin.
  *
  * Sent with the public (publishable) key, like a signed-out visitor: no secret

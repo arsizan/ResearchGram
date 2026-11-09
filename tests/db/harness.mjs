@@ -20,6 +20,8 @@ export const MIGRATIONS = [
   '20261016000000_phase4.sql',
   '20261016010000_phase4_after_deploy.sql',
   '20261017000000_phase5.sql',
+  // 9 Nov 2026: AcademicOrbit rename
+  '20261110000000_academicorbit_rename.sql',
 ];
 
 const SETUP = `

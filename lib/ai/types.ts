@@ -3,7 +3,8 @@
  *
  * The answer is deliberately NOT a blob of prose. It is a small object the UI
  * renders as separate blocks — the written answer, the papers it cites, the
- * ResearchGram members working on the topic — so the result reads as organised
+ * 9 Nov 2026: AcademicOrbit rename.
+ * AcademicOrbit members working on the topic — so the result reads as organised
  * findings rather than a chat transcript.
  */
 

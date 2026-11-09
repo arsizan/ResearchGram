@@ -213,7 +213,8 @@ export default function ResearchersClient() {
       requester_id: currentUserId,
       receiver_id: receiverId,
       request_type: "connection",
-      message: "I would like to connect with you on ResearchGram.",
+      // 9 Nov 2026: AcademicOrbit rename
+      message: "I would like to connect with you on AcademicOrbit.",
       status: "pending",
     });
 

@@ -52,7 +52,8 @@ test('meeting rooms get a random name from the database (RG-22)', async ({ app, 
   await app.getByRole('button', { name: 'Create Video Room' }).click();
 
   const frame = app.locator('iframe[title="Weekly sync"]');
-  await expect(frame).toHaveAttribute('src', /^https:\/\/meet\.jit\.si\/ResearchGram-[0-9a-f]{32}$/);
+  // 9 Nov 2026: AcademicOrbit rename
+  await expect(frame).toHaveAttribute('src', /^https:\/\/meet\.jit\.si\/AcademicOrbit-[0-9a-f]{32}$/);
   const sent = db.writes.find((w) => w.kind === 'insert' && w.table === 'workspace_meetings');
   expect(sent.rows[0].room_name).not.toContain(W.replace(/-/g, ''));
 });

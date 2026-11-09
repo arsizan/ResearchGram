@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import { useRouter } from "next/navigation";
 import {
   GitBranch,
@@ -631,7 +632,8 @@ export default function RequestsUI({
   ];
 
 if (loading) {
-  return <ResearchGramSkeleton activePage="requests" variant="requests" />;
+  // 9 Nov 2026: AcademicOrbit rename
+  return <AppSkeleton activePage="requests" variant="requests" />;
 }
 
   return (

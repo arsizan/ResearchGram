@@ -1,7 +1,8 @@
 "use client";
 
 
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import AppNav from "@/components/AppNav";
 import {
@@ -858,7 +859,8 @@ const messageStream: StreamItem[] = useMemo(() => {
 
   // ── Loading state ───────────────────────────────────────────────────────
  if (loading) {
-  return <ResearchGramSkeleton activePage="messages" variant="messages" />;
+  // 9 Nov 2026: AcademicOrbit rename
+  return <AppSkeleton activePage="messages" variant="messages" />;
 }
 
   // ── Derived display data for selected chat header ───────────────────────
@@ -972,7 +974,8 @@ const messageStream: StreamItem[] = useMemo(() => {
                       <option value="">— Select researcher —</option>
                       {connectedProfiles.map((p) => (
                         <option key={p.id} value={p.id}>
-                          {p.full_name || p.email || "ResearchGram user"}
+                          {/* 9 Nov 2026: AcademicOrbit rename */}
+                          {p.full_name || p.email || "AcademicOrbit user"}
                           {p.department ? ` · ${p.department}` : ""}
                         </option>
                       ))}

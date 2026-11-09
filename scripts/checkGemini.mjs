@@ -27,7 +27,8 @@ const bad = (m) => {
 };
 const info = (m) => console.log(`         ${m}`);
 
-console.log("\nResearchGram — AI assistant preflight\n");
+// 9 Nov 2026: AcademicOrbit rename
+console.log("\nAcademicOrbit — AI assistant preflight\n");
 
 // ------------------------------------------------------------- 1. the key
 console.log("1. API key");

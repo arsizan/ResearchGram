@@ -89,9 +89,9 @@ Supabase Auth checks the token with Cloudflare, so the secret key only ever goes
 into Supabase. Order matters: Supabase rejects every login without a token as soon
 as the check is on.
 
-1. Cloudflare dashboard → Turnstile → *Add widget*: hostname `research-gram.vercel.app`
-   (add the custom domain later), mode *Managed*. Copy the site key and the secret
-   key.
+1. Cloudflare dashboard → Turnstile → *Add widget*: hostname `academicorbit.com` (it
+   covers `www.academicorbit.com` too), mode *Managed*. Copy the site key and the secret
+   key. <!-- 9 Nov 2026: AcademicOrbit rename -->
 2. Vercel: set `NEXT_PUBLIC_TURNSTILE_SITE_KEY` to the **site** key and redeploy.
    Check that the login page shows the check.
 3. Supabase: Authentication → Attack Protection → *Enable CAPTCHA protection* →
@@ -176,10 +176,10 @@ Optional. Without it, the profile works as before and the button is hidden.
 
 1. Register an app at <https://orcid.org/developer-tools> (or, for testing, at
    <https://sandbox.orcid.org/developer-tools>). Redirect URI, exactly:
-   `https://research-gram.vercel.app/profile/orcid` (orcid.org only accepts https
+   `https://www.academicorbit.com/profile/orcid` (orcid.org only accepts https <!-- 9 Nov 2026: AcademicOrbit rename -->
    addresses). The free public API is for non-commercial use only: its terms rule out
    use "in connection with any revenue-generating product or service", so a paid
-   ResearchGram needs ORCID membership instead.
+   AcademicOrbit needs ORCID membership instead. <!-- 9 Nov 2026: AcademicOrbit rename -->
 2. Store the client id and secret in Vault (SQL editor). The secret never goes into
    the app, git or Vercel; only the database reads it.
 

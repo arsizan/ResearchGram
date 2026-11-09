@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import AppNav from "@/components/AppNav";
 import LocalRecorder from "./LocalRecorder";
 import {
@@ -479,7 +480,8 @@ export default function WorkspaceUI({
   }, [milestones]);
 
 if (loading) {
-  return <ResearchGramSkeleton activePage="workspace" variant="workspace" />;
+  // 9 Nov 2026: AcademicOrbit rename
+  return <AppSkeleton activePage="workspace" variant="workspace" />;
 }
 
   return (
@@ -647,7 +649,8 @@ if (loading) {
                 <Sparkles className="w-3 h-3" /> Workspace Tip
               </p>
               <p className="text-xs text-indigo-700 leading-relaxed">
-                Start personal for early drafts, then convert to shared when collaborators join. Local recordings are downloaded to your computer only — metadata stays on ResearchGram.
+                {/* 9 Nov 2026: AcademicOrbit rename */}
+                Start personal for early drafts, then convert to shared when collaborators join. Local recordings are downloaded to your computer only — metadata stays on AcademicOrbit.
               </p>
             </div>
           </section>
@@ -1444,7 +1447,8 @@ if (loading) {
                           <EmptyState
                             icon={Video}
                             title="No meetings created yet"
-                            message="Create a Jitsi video room. Anyone in the workspace can join from inside ResearchGram or in a new tab."
+                            // 9 Nov 2026: AcademicOrbit rename
+                            message="Create a Jitsi video room. Anyone in the workspace can join from inside AcademicOrbit or in a new tab."
                           />
                         ) : (
                           meetings.map((m) => (
@@ -1493,7 +1497,8 @@ if (loading) {
                           <Plus className="w-4 h-4 text-primary" /> Create Video Meeting
                         </h3>
                         <p className="text-xs text-muted-foreground leading-relaxed">
-                          Creates a Jitsi room link. Recording downloads locally to the recorder&apos;s computer; only metadata stays on ResearchGram.
+                          {/* 9 Nov 2026: AcademicOrbit rename */}
+                          Creates a Jitsi room link. Recording downloads locally to the recorder&apos;s computer; only metadata stays on AcademicOrbit.
                         </p>
                         <input
                           aria-label="Meeting title"
@@ -1539,7 +1544,8 @@ if (loading) {
                       <div>
                         <p className="text-sm font-bold text-amber-900">Local-only recording</p>
                         <p className="text-xs text-amber-700 mt-1 leading-relaxed">
-                          Actual video files download to the recorder&apos;s local computer. ResearchGram stores only metadata — file name, duration, recorder ID, and meeting reference.
+                          {/* 9 Nov 2026: AcademicOrbit rename */}
+                          Actual video files download to the recorder&apos;s local computer. AcademicOrbit stores only metadata — file name, duration, recorder ID, and meeting reference.
                         </p>
                       </div>
                     </div>

@@ -15,11 +15,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   },
 });
 
-const DEFAULT_PASSWORD = "ResearchGram@12345";
+// 9 Nov 2026: AcademicOrbit rename
+const DEFAULT_PASSWORD = "AcademicOrbit@12345";
 
 const demoProfiles = [
   {
-    email: "nusrat.jahan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "nusrat.jahan@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Nusrat Jahan",
     department: "Computer Science and Engineering",
@@ -39,7 +41,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "rakib.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "rakib.hasan@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Rakib Hasan",
     department: "Information and Communication Engineering",
@@ -59,7 +62,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "farzana.akter@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "farzana.akter@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Farzana Akter",
     department: "Physics",
@@ -79,7 +83,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "tanvir.ahmed@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "tanvir.ahmed@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Tanvir Ahmed",
     department: "Civil Engineering",
@@ -99,7 +104,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "mehedi.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "mehedi.hasan@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Mehedi Hasan",
     department: "Mathematics",
@@ -119,7 +125,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "shuvo.roy@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "shuvo.roy@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Shuvo Roy",
     department: "Electrical and Electronic Engineering",
@@ -139,7 +146,8 @@ const demoProfiles = [
     office_hours: "",
   },
   {
-    email: "dr.sadia.islam@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "dr.sadia.islam@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Dr. Sadia Islam",
     department: "Computer Science and Engineering",
@@ -159,7 +167,8 @@ const demoProfiles = [
     office_hours: "Sunday and Tuesday, 11:00 AM - 1:00 PM",
   },
   {
-    email: "dr.nazmul.karim@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "dr.nazmul.karim@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Dr. Nazmul Karim",
     department: "Physics",
@@ -179,7 +188,8 @@ const demoProfiles = [
     office_hours: "Monday and Wednesday, 10:00 AM - 12:00 PM",
   },
   {
-    email: "prof.mahmud.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "prof.mahmud.hasan@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Prof. Mahmud Hasan",
     department: "Business Administration",
@@ -199,7 +209,8 @@ const demoProfiles = [
     office_hours: "Thursday, 2:00 PM - 4:00 PM",
   },
   {
-    email: "ayesha.rahman@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "ayesha.rahman@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Ayesha Rahman",
     department: "Computer Science and Engineering",
@@ -219,7 +230,8 @@ const demoProfiles = [
     office_hours: "Friday evening by appointment",
   },
   {
-    email: "arif.chowdhury@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "arif.chowdhury@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Arif Chowdhury",
     department: "Statistics",
@@ -239,7 +251,8 @@ const demoProfiles = [
     office_hours: "Saturday, 8:00 PM - 10:00 PM",
   },
   {
-    email: "tahmid.rahman@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    email: "tahmid.rahman@academicorbit.test",
     password: DEFAULT_PASSWORD,
     full_name: "Tahmid Rahman",
     department: "Public Health",
@@ -262,7 +275,8 @@ const demoProfiles = [
 
 const demoPosts = [
   {
-    authorEmail: "nusrat.jahan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "nusrat.jahan@academicorbit.test",
     title: "AI-Based Rice Leaf Disease Detection Using Mobile Images",
     content_category: "article",
     post_type: "research_note",
@@ -276,7 +290,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "rakib.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "rakib.hasan@academicorbit.test",
     title: "IoT-Based Smart Irrigation System for Small Farmers",
     content_category: "article",
     post_type: "research_note",
@@ -290,7 +305,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "dr.sadia.islam@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "dr.sadia.islam@academicorbit.test",
     title: "Bangla NLP Dataset Preparation for Academic Sentiment Analysis",
     content_category: "research_paper",
     post_type: "paper_draft",
@@ -305,7 +321,8 @@ const demoPosts = [
     doi: "10.1234/rg.bangla.nlp.2026",
   },
   {
-    authorEmail: "farzana.akter@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "farzana.akter@academicorbit.test",
     title: "Simulation Study of Perovskite Solar Cell Efficiency",
     content_category: "research_paper",
     post_type: "paper_draft",
@@ -320,7 +337,8 @@ const demoPosts = [
     doi: "10.1234/rg.solar.cell.2026",
   },
   {
-    authorEmail: "tanvir.ahmed@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "tanvir.ahmed@academicorbit.test",
     title: "Use of Recycled Brick Aggregate in Lightweight Concrete",
     content_category: "article",
     post_type: "research_note",
@@ -334,7 +352,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "mehedi.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "mehedi.hasan@academicorbit.test",
     title: "Comparative Study of Newton-Raphson and Secant Method",
     content_category: "research_paper",
     post_type: "paper_draft",
@@ -349,7 +368,8 @@ const demoPosts = [
     doi: "10.1234/rg.numerical.methods.2026",
   },
   {
-    authorEmail: "shuvo.roy@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "shuvo.roy@academicorbit.test",
     title: "Smart Energy Monitoring System for University Buildings",
     content_category: "article",
     post_type: "research_note",
@@ -363,7 +383,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "ayesha.rahman@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "ayesha.rahman@academicorbit.test",
     title: "Deploying Machine Learning Models for Student Projects",
     content_category: "article",
     post_type: "research_note",
@@ -377,7 +398,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "arif.chowdhury@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "arif.chowdhury@academicorbit.test",
     title: "Public Health Survey Data Cleaning Checklist",
     content_category: "article",
     post_type: "research_note",
@@ -391,7 +413,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "tahmid.rahman@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "tahmid.rahman@academicorbit.test",
     title: "Dengue Outbreak Prediction Using Weather and Case Data",
     content_category: "article",
     post_type: "research_note",
@@ -405,7 +428,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "prof.mahmud.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "prof.mahmud.hasan@academicorbit.test",
     title: "Student Entrepreneurship Intention in Public Universities",
     content_category: "research_paper",
     post_type: "paper_draft",
@@ -420,7 +444,8 @@ const demoPosts = [
     doi: "10.1234/rg.entrepreneurship.2026",
   },
   {
-    authorEmail: "dr.nazmul.karim@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "dr.nazmul.karim@academicorbit.test",
     title: "Nanomaterials for Low-Cost Solar Energy Applications",
     content_category: "research_paper",
     post_type: "paper_draft",
@@ -435,7 +460,8 @@ const demoPosts = [
     doi: "10.1234/rg.nanomaterials.2026",
   },
   {
-    authorEmail: "dr.sadia.islam@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "dr.sadia.islam@academicorbit.test",
     title: "Research Writing Resource: IEEE Paper Structure",
     content_category: "article",
     post_type: "research_note",
@@ -449,7 +475,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "prof.mahmud.hasan@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "prof.mahmud.hasan@academicorbit.test",
     title: "Survey Questionnaire Design Guide for Academic Research",
     content_category: "article",
     post_type: "research_note",
@@ -463,7 +490,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "arif.chowdhury@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "arif.chowdhury@academicorbit.test",
     title: "Sample Public Health Dataset Structure",
     content_category: "dataset",
     post_type: "dataset",
@@ -477,7 +505,8 @@ const demoPosts = [
     allow_full_paper_request: false,
   },
   {
-    authorEmail: "ayesha.rahman@researchgram.test",
+    // 9 Nov 2026: AcademicOrbit rename
+    authorEmail: "ayesha.rahman@academicorbit.test",
     title: "Machine Learning Project Checklist for Final Year Students",
     content_category: "article",
     post_type: "research_note",

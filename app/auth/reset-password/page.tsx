@@ -170,7 +170,8 @@ export default function ResetPasswordPage() {
         <h1 className="text-3xl font-bold text-gray-900">Create new password</h1>
 
         <p className="mt-2 text-sm text-gray-600">
-          Choose a strong password for your ResearchGram account.
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          Choose a strong password for your AcademicOrbit account.
         </p>
 
         <div className="mt-6 space-y-4">

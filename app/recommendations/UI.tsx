@@ -96,7 +96,8 @@ export default function RecommendationsUI({
             </h1>
 
             <p className="mt-4 text-sm leading-7 text-blue-100">
-              ResearchGram compares your post topic with researcher profiles,
+              {/* 9 Nov 2026: AcademicOrbit rename */}
+              AcademicOrbit compares your post topic with researcher profiles,
               skills, interests, bio, and department to suggest suitable
               collaborators.
             </p>
@@ -221,7 +222,8 @@ export default function RecommendationsUI({
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <h3 className="truncate text-lg font-black text-slate-950">
-                              {profile.full_name || "ResearchGram User"}
+                              {/* 9 Nov 2026: AcademicOrbit rename */}
+                              {profile.full_name || "AcademicOrbit User"}
                             </h3>
 
                             <p className="mt-1 text-sm text-slate-500">

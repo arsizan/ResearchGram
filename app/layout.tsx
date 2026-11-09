@@ -83,7 +83,8 @@ const fontVariables = [
   jetbrainsMono.variable,
 ].join(" ");
 
-// Page titles become "Feed · ResearchGram" and so on; pages behind the login
+// 9 Nov 2026: AcademicOrbit rename
+// Page titles become "Feed · AcademicOrbit" and so on; pages behind the login
 // use privatePage() from lib/site.ts so search engines leave them out (RG-34).
 // The link-preview image is app/opengraph-image.png.
 export const metadata: Metadata = {

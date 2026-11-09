@@ -1,5 +1,6 @@
 /**
- * Finds ResearchGram members working on a topic.
+ * 9 Nov 2026: AcademicOrbit rename.
+ * Finds AcademicOrbit members working on a topic.
  *
  * This is the part no external tool can do. Elicit and Consensus can both list
  * papers on federated learning; only this platform can say "and three people in
@@ -188,7 +189,8 @@ export async function findMembersForTopic({
 
     const match: MemberMatch = {
       id: profile.id,
-      fullName: profile.full_name || "ResearchGram member",
+      // 9 Nov 2026: AcademicOrbit rename
+      fullName: profile.full_name || "AcademicOrbit member",
       department: profile.department,
       userRole: profile.user_role,
       academicLevel: profile.academic_level,

@@ -33,7 +33,8 @@ const SUGGESTIONS = [
  * The version suffix means a future change to AssistantAnswer can bump the key
  * instead of migrating whatever is already in people's browsers.
  */
-const STORAGE_KEY = "researchgram.assistant.v1";
+// 9 Nov 2026: AcademicOrbit rename
+const STORAGE_KEY = "academicorbit.assistant.v1";
 const MAX_STORED_TURNS = 15;
 
 function readStoredTurns(): AssistantTurn[] {
@@ -398,9 +399,10 @@ export default function ResearchAssistant() {
               How can I help with your research?
             </p>
             <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              {/* 9 Nov 2026: AcademicOrbit rename */}
               Ask about any topic. You will get a short answer, the papers behind
               it with their citation counts and journal metrics, and the people on
-              ResearchGram working on the same thing.
+              AcademicOrbit working on the same thing.
             </p>
 
             <p className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

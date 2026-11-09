@@ -56,7 +56,8 @@ test('"Download my data" saves everything as one JSON file', async ({ app, db })
   const download = app.waitForEvent('download');
   await app.getByRole('button', { name: 'Download my data' }).click();
   const file = await download;
-  expect(file.suggestedFilename()).toMatch(/^researchgram-data-\d{4}-\d{2}-\d{2}\.json$/);
+  // 9 Nov 2026: AcademicOrbit rename
+  expect(file.suggestedFilename()).toMatch(/^academicorbit-data-\d{4}-\d{2}-\d{2}\.json$/);
   expect(rpcCalls(db, 'export_my_data')).toHaveLength(1);
 });
 

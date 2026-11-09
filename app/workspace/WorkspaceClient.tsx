@@ -96,7 +96,8 @@ function getFileCategory(file: File) {
 // A meeting room nobody can guess (audit RG-22). The database makes its own
 // random name anyway; this is only what the browser sends.
 function randomRoomName() {
-  return `ResearchGram-${newId().replace(/-/g, "")}`;
+  // 9 Nov 2026: AcademicOrbit rename
+  return `AcademicOrbit-${newId().replace(/-/g, "")}`;
 }
 
 export default function WorkspaceClient() {

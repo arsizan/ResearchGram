@@ -85,7 +85,8 @@ export default function ForgotPasswordPage() {
         <h1 className="text-3xl font-bold text-gray-900">Reset password</h1>
 
         <p className="mt-2 text-sm text-gray-600">
-          Enter your ResearchGram account email. We will send a secure password reset link.
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          Enter your AcademicOrbit account email. We will send a secure password reset link.
         </p>
 
         <div className="mt-6 space-y-4">

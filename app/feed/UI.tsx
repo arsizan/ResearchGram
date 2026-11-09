@@ -4,7 +4,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import PostList from "@/components/posts/PostList";
 import { Avatar, formatFileSize, formatLabel } from "@/components/posts/PostParts";
 import type { PostActions } from "@/lib/posts/usePostActions";
@@ -116,7 +117,8 @@ const PAPER_ACCESS_OPTIONS = [
 ];
 
 function getPlatformAuthorName(author: PlatformAuthor) {
-  return author.full_name || author.email?.split("@")[0] || "ResearchGram User";
+  // 9 Nov 2026: AcademicOrbit rename
+  return author.full_name || author.email?.split("@")[0] || "AcademicOrbit User";
 }
 
 // ─── Main UI ─────────────────────────────────────────────────────────────────
@@ -170,7 +172,8 @@ export default function FeedUI({
 
   // ── Loading state ─────────────────────────────────────────────────────────
 if (loading) {
-  return <ResearchGramSkeleton activePage="feed" variant="feed" />;
+  // 9 Nov 2026: AcademicOrbit rename
+  return <AppSkeleton activePage="feed" variant="feed" />;
 }
 
   // ── Composer collapsed strip ──────────────────────────────────────────────
@@ -397,16 +400,19 @@ if (loading) {
           </div>
         )}
 
-        {/* Search ResearchGram users */}
+        {/* 9 Nov 2026: AcademicOrbit rename */}
+        {/* Search AcademicOrbit users */}
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             type="text"
-            aria-label="Find co-authors on ResearchGram"
+            // 9 Nov 2026: AcademicOrbit rename
+            aria-label="Find co-authors on AcademicOrbit"
             aria-describedby="composer-coauthors"
             value={coAuthorSearch}
             onChange={(e) => setCoAuthorSearch(e.target.value)}
-            placeholder="Search ResearchGram users by name, email, or department…"
+            // 9 Nov 2026: AcademicOrbit rename
+            placeholder="Search AcademicOrbit users by name, email, or department…"
             className="w-full pl-9 pr-4 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
           />
           {authorSuggestions.length > 0 && (
@@ -434,11 +440,13 @@ if (loading) {
         <div className="flex gap-2">
           <input
             type="text"
-            aria-label="Name of a co-author who is not on ResearchGram"
+            // 9 Nov 2026: AcademicOrbit rename
+            aria-label="Name of a co-author who is not on AcademicOrbit"
             value={manualAuthorName}
             onChange={(e) => setManualAuthorName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddManualAuthor(); } }}
-            placeholder="Add external co-author by name (not on ResearchGram)…"
+            // 9 Nov 2026: AcademicOrbit rename
+            placeholder="Add external co-author by name (not on AcademicOrbit)…"
             className="flex-1 px-4 py-2.5 text-sm bg-muted rounded-xl border border-border focus:border-primary focus:bg-white focus:outline-none transition-all"
           />
           <button
@@ -549,7 +557,8 @@ if (loading) {
             {fullName || "Researcher"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Active ResearchGram profile
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            Active AcademicOrbit profile
           </p>
         </div>
 

@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import AppNav from "@/components/AppNav";
 import {
   Camera,
@@ -217,7 +218,8 @@ handleProfilePicSelect,
   const displayProfile = previewProfileUrl || profilePicUrl;
 
  if (loading) {
-  return <ResearchGramSkeleton activePage="profile" variant="profile" />;
+  // 9 Nov 2026: AcademicOrbit rename
+  return <AppSkeleton activePage="profile" variant="profile" />;
 }
   return (
     <main className="min-h-screen bg-background pb-24 lg:pb-12">
@@ -943,7 +945,8 @@ handleProfilePicSelect,
                   onClick={handleLogout}
                   className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl border border-border text-sm font-semibold text-red-600 hover:bg-red-50 hover:border-red-200 transition-colors"
                 >
-                  Logout from ResearchGram
+                  {/* 9 Nov 2026: AcademicOrbit rename */}
+                  Logout from AcademicOrbit
                   <LogOut className="w-3.5 h-3.5" />
                 </button>
               </div>

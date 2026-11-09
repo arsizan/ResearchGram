@@ -4,7 +4,8 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Sign up",
   description:
-    "Create a ResearchGram account to publish research, find collaborators and mentors, and control who reads your full papers.",
+    // 9 Nov 2026: AcademicOrbit rename
+    "Create an AcademicOrbit account to publish research, find collaborators and mentors, and control who reads your full papers.",
   alternates: { canonical: "/auth/signup" },
 };
 

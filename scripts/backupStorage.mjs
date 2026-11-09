@@ -8,7 +8,8 @@
  * .env.backup (git-ignored, stays on this computer only):
  *   SUPABASE_URL=https://<project-ref>.supabase.co
  *   SUPABASE_SECRET_KEY=sb_secret_...   Project Settings -> API Keys -> Secret keys
- *   BACKUP_DIR=D:\ResearchGram-backups\files
+ * 9 Nov 2026: AcademicOrbit rename.
+ *   BACKUP_DIR=D:\AcademicOrbit-backups\files
  *
  * The secret key can read every file: never put it in git, Vercel or a chat.
  * Each run writes a new dated folder inside BACKUP_DIR with manifest.json

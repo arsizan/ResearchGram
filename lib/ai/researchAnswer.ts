@@ -17,7 +17,8 @@ import { generateStructured, generateStructuredStream } from "./provider";
 import type { Paper } from "@/lib/scholar/types";
 import type { AnswerKind } from "./types";
 
-const SYSTEM = `You are the research assistant inside ResearchGram, an academic
+// 9 Nov 2026: AcademicOrbit rename
+const SYSTEM = `You are the research assistant inside AcademicOrbit, an academic
 collaboration platform used mainly by undergraduate and postgraduate students.
 
 You will be given a user's question and a numbered list of real papers retrieved
@@ -35,7 +36,7 @@ Rules you must follow:
   not explain, 3 to 5 sentences.
 - Do not open with pleasantries, do not restate the question, do not offer to
   help further. Start with the substance.
-- If the question is about using ResearchGram itself (posting a paper, finding
+- If the question is about using AcademicOrbit itself (posting a paper, finding
   collaborators, requesting access) rather than about research, set kind to
   "product_help" and answer briefly from general knowledge with no citations.
 - If the question is too vague to search, set kind to "unclear" and say what
@@ -59,7 +60,8 @@ const TOOL = {
         type: "string",
         enum: ["research", "product_help", "unclear"],
         description:
-          "research = answered from the papers; product_help = about using ResearchGram; unclear = question too vague to search.",
+          // 9 Nov 2026: AcademicOrbit rename
+          "research = answered from the papers; product_help = about using AcademicOrbit; unclear = question too vague to search.",
       },
       cited_papers: {
         type: "array",

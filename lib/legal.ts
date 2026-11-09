@@ -16,7 +16,8 @@ export const TERMS_DATE_LABEL = new Date(`${TERMS_VERSION}T00:00:00Z`).toLocaleD
   timeZone: "UTC",
 });
 
-/** Who runs ResearchGram, as named on the legal pages. */
+// 9 Nov 2026: AcademicOrbit rename
+/** Who runs AcademicOrbit, as named on the legal pages. */
 export const OPERATOR_NAME = "Md. Abdur Rahman Sizan";
 export const OPERATOR_DETAILS = "a student at Pabna University of Science and Technology (PUST), Bangladesh";
 

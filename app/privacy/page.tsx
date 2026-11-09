@@ -5,7 +5,8 @@ import { MINIMUM_AGE, OPERATOR_DETAILS, OPERATOR_NAME } from "@/lib/legal";
 // Public and indexable: people read it before they sign up.
 export const metadata: Metadata = {
   title: "Privacy Policy",
-  description: "What ResearchGram collects, why, who can see it, where it is stored, and your choices.",
+  // 9 Nov 2026: AcademicOrbit rename
+  description: "What AcademicOrbit collects, why, who can see it, where it is stored, and your choices.",
 };
 
 const list = "list-disc space-y-1.5 pl-5";
@@ -13,10 +14,11 @@ const list = "list-disc space-y-1.5 pl-5";
 const sections: LegalSection[] = [
   {
     id: "who",
-    title: "Who runs ResearchGram",
+    // 9 Nov 2026: AcademicOrbit rename
+    title: "Who runs AcademicOrbit",
     body: (
       <p>
-        ResearchGram is a free, non-commercial project run by {OPERATOR_NAME}, {OPERATOR_DETAILS} (&ldquo;we&rdquo;,
+        AcademicOrbit is a free, non-commercial project run by {OPERATOR_NAME}, {OPERATOR_DETAILS} (&ldquo;we&rdquo;,
         &ldquo;us&rdquo;). We decide how your data is used and are responsible for it. You can reach us at <ContactLine />.
       </p>
     ),
@@ -67,9 +69,10 @@ const sections: LegalSection[] = [
     body: (
       <>
         <ul className={list}>
-          <li>To run ResearchGram: your account, your profile and posts for the people you choose, messages, notifications and workspaces.</li>
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          <li>To run AcademicOrbit: your account, your profile and posts for the people you choose, messages, notifications and workspaces.</li>
           <li>To suggest researchers and collaborators, from your profile, your posts and your recent searches.</li>
-          <li>To keep ResearchGram safe: the bot check at sign-up and login, limits on repeated actions, reports and moderation, and a record of admin actions.</li>
+          <li>To keep AcademicOrbit safe: the bot check at sign-up and login, limits on repeated actions, reports and moderation, and a record of admin actions.</li>
           <li>To find and fix errors.</li>
         </ul>
         <p>
@@ -102,13 +105,14 @@ const sections: LegalSection[] = [
           <strong>Chats and workspaces:</strong> messages and files in a chat are visible to the people in that chat;
           workspace content to the workspace members.
         </li>
+        {/* 9 Nov 2026: AcademicOrbit rename */}
         <li>
           <strong>Admins</strong> see reported posts, the record of admin actions and the error reports in the admin
           console, which does not show messages. To review reports, admins can open the files of any post, restricted
-          papers included. The operator can also reach the database to run and repair ResearchGram, and only does so
+          papers included. The operator can also reach the database to run and repair AcademicOrbit, and only does so
           when needed.
         </li>
-        <li><strong>Service providers</strong> that run parts of ResearchGram for us (next section).</li>
+        <li><strong>Service providers</strong> that run parts of AcademicOrbit for us (next section).</li>
         <li><strong>Authorities</strong>, when the law requires it.</li>
       </ul>
     ),
@@ -140,8 +144,9 @@ const sections: LegalSection[] = [
           <li><strong>Jitsi Meet (meet.jit.si):</strong> video meetings in workspaces. When you join one, your audio and video pass through Jitsi&rsquo;s servers.</li>
         </ul>
         <p>
+          {/* 9 Nov 2026: AcademicOrbit rename */}
           Some of these providers are outside Bangladesh, in India, the United States and other countries. Until 31
-          October 2026, a copy of the data made before ResearchGram moved to Mumbai is also kept at Supabase in Sydney,
+          October 2026, a copy of the data made before AcademicOrbit moved to Mumbai is also kept at Supabase in Sydney,
           Australia; it is then deleted.
         </p>
       </>
@@ -206,7 +211,8 @@ const sections: LegalSection[] = [
     title: "Cookies and browser storage",
     body: (
       <p>
-        We use only what ResearchGram needs to work: cookies that keep you signed in, and browser storage that keeps
+        {/* 9 Nov 2026: AcademicOrbit rename */}
+        We use only what AcademicOrbit needs to work: cookies that keep you signed in, and browser storage that keeps
         your current research assistant conversation (until you close the tab) and remembers an ORCID sign-in in
         progress. Cloudflare&rsquo;s bot check may store information in your browser to tell people from bots, Vercel&rsquo;s
         firewall may set a cookie after a security check, and the Jitsi meeting window keeps its own settings in your
@@ -232,7 +238,8 @@ const sections: LegalSection[] = [
     title: "Age",
     body: (
       <p>
-        ResearchGram is for people aged {MINIMUM_AGE} or older. If we learn that someone under {MINIMUM_AGE} has an
+        {/* 9 Nov 2026: AcademicOrbit rename */}
+        AcademicOrbit is for people aged {MINIMUM_AGE} or older. If we learn that someone under {MINIMUM_AGE} has an
         account, we delete it.
       </p>
     ),
@@ -242,8 +249,9 @@ const sections: LegalSection[] = [
     title: "Changes to this policy",
     body: (
       <p>
+        {/* 9 Nov 2026: AcademicOrbit rename */}
         If we change this policy in a way that matters, we change the date at the top and ask you to accept the new
-        version the next time you use ResearchGram.
+        version the next time you use AcademicOrbit.
       </p>
     ),
   },
@@ -264,7 +272,8 @@ export default function PrivacyPage() {
       title="Privacy Policy"
       intro={
         <p>
-          ResearchGram is an academic network where researchers share their work, find collaborators and talk to each
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          AcademicOrbit is an academic network where researchers share their work, find collaborators and talk to each
           other. This policy explains what we collect, why, who can see it, and the choices you have.
         </p>
       }

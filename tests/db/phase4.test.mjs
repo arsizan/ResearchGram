@@ -418,8 +418,9 @@ console.log('MESSAGES: server time, chat bumped by the database, attachments che
 
 // ---------------------------------------------------------------- 9. Jitsi rooms (RG-22)
 await check('jitsi', async () => {
-  const row = (await as(A, `insert into public.workspace_meetings (workspace_id, created_by, title, room_name, meeting_url) values ('${W1}','${A}','Standup','researchgram-guessable','https://meet.jit.si/researchgram-guessable') returning room_name, meeting_url, provider`))[0];
-  assert.match(row.room_name, /^ResearchGram-[0-9a-f]{32}$/); ok();
+  // 9 Nov 2026: AcademicOrbit rename
+  const row = (await as(A, `insert into public.workspace_meetings (workspace_id, created_by, title, room_name, meeting_url) values ('${W1}','${A}','Standup','guessable-room','https://meet.jit.si/guessable-room') returning room_name, meeting_url, provider`))[0];
+  assert.match(row.room_name, /^AcademicOrbit-[0-9a-f]{32}$/); ok();
   assert.equal(row.meeting_url, `https://meet.jit.si/${row.room_name}`); assert.equal(row.provider, 'jitsi'); ok();
   const row2 = (await as(A, `insert into public.workspace_meetings (workspace_id, created_by, title, room_name, meeting_url) values ('${W1}','${A}','Again','x','x') returning room_name`))[0];
   assert.notEqual(row2.room_name, row.room_name); ok();

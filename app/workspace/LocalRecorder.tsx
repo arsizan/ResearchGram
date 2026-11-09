@@ -97,7 +97,8 @@ export default function LocalRecorder({
         const safeTitle = meeting.title
           .replace(/[^\w\-]+/g, "_")
           .slice(0, 50);
-        const fileName = `ResearchGram_${safeTitle}_${Date.now()}.webm`;
+        // 9 Nov 2026: AcademicOrbit rename
+        const fileName = `AcademicOrbit_${safeTitle}_${Date.now()}.webm`;
 
         downloadBlob(blob, fileName);
         setLastFileName(fileName);
@@ -221,7 +222,8 @@ export default function LocalRecorder({
         <div className="flex items-start gap-2 mt-3 text-[11px] text-amber-700 leading-relaxed">
           <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />
           <p>
-            Recording is browser-local (MediaRecorder). The .webm video is downloaded to your machine; only metadata (file name, duration, who recorded, meeting reference) is saved on ResearchGram.
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            Recording is browser-local (MediaRecorder). The .webm video is downloaded to your machine; only metadata (file name, duration, who recorded, meeting reference) is saved on AcademicOrbit.
           </p>
         </div>
       </div>

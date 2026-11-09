@@ -1,4 +1,5 @@
--- ResearchGram: export login accounts for the move to Mumbai. READ-ONLY.
+-- 9 Nov 2026: AcademicOrbit rename
+-- AcademicOrbit: export login accounts for the move to Mumbai. READ-ONLY.
 -- Contains password hashes. Keep the file on your computer, never share it,
 -- and delete it after the move.
 select jsonb_agg(jsonb_build_object(

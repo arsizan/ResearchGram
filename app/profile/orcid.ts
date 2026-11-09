@@ -19,7 +19,8 @@ export const ORCID_SIGN_IN_AVAILABLE = Boolean(ORCID_CLIENT_ID);
 
 // Protects the return trip: ORCID sends back the value we sent, and only a
 // sign-in this tab started is accepted.
-const STATE_KEY = "researchgram-orcid-state";
+// 9 Nov 2026: AcademicOrbit rename
+const STATE_KEY = "academicorbit-orcid-state";
 
 export function orcidRedirectUri() {
   return `${window.location.origin}/profile/orcid`;

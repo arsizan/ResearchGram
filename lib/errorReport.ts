@@ -1,7 +1,8 @@
 import { supabase } from "@/lib/supabase";
 
 /*
- * ResearchGram's own error log (Phase 5). Errors in the browser go to
+ * 9 Nov 2026: AcademicOrbit rename.
+ * AcademicOrbit's own error log (Phase 5). Errors in the browser go to
  * public.report_error(); admins see them in /admin. Only what helps fixing the
  * problem is sent: the error message, a short stack trace, the page path
  * without the part after "?", and the browser. Never page content. Ids, email
@@ -16,7 +17,8 @@ const MAX_REPORTS_PER_PAGE_LOAD = 10;
 let sent = 0;
 const seen = new Set<string>();
 
-// Messages that say nothing about ResearchGram itself.
+// 9 Nov 2026: AcademicOrbit rename
+// Messages that say nothing about AcademicOrbit itself.
 const IGNORED = [
   /ResizeObserver loop/i,
   /^Script error\.?$/i,

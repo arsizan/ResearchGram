@@ -43,7 +43,8 @@ export default function LegalDocument({
         <Link href="/" className="inline-flex items-center gap-2.5">
           <BrandLogo size={32} className="h-8 w-8" />
           <span className="font-extrabold text-foreground">
-            Research<span className="text-primary">Gram</span>
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            Academic<span className="text-primary">Orbit</span>
           </span>
         </Link>
 
@@ -84,7 +85,8 @@ export default function LegalDocument({
             {otherPage.label}
           </Link>
           <Link href="/" className="font-semibold text-primary underline-offset-2 hover:underline">
-            Back to ResearchGram
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            Back to AcademicOrbit
           </Link>
         </footer>
       </div>

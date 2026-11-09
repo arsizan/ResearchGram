@@ -115,7 +115,8 @@ test.describe('Terms, Privacy Policy and consent', () => {
       await expect(app).toHaveURL(new RegExp(`${path}$`));
       await expect(app.getByRole('heading', { level: 1, name: heading })).toBeVisible();
       await expect(app.getByText('Last updated: 16 October 2026')).toBeVisible();
-      await expect(app.getByRole('link', { name: 'help@researchgram.test' }).first()).toHaveAttribute('href', 'mailto:help@researchgram.test');
+      // 9 Nov 2026: AcademicOrbit rename
+      await expect(app.getByRole('link', { name: 'help@academicorbit.test' }).first()).toHaveAttribute('href', 'mailto:help@academicorbit.test');
       expect(await accessibilityProblems(app), path).toEqual([]);
     }
     await app.goto('/');
@@ -191,12 +192,18 @@ test.describe('error log', () => {
   test('an error nothing caught is reported, without the part of the address after "?"', async ({ app, db, context }) => {
     await signIn(context, db);
     await app.goto('/network?tab=mine&code=secret');
-    await app.evaluate(() => {
-      setTimeout(() => {
-        throw new TypeError('Boom from the test');
+    // 9 Nov 2026: the page starts listening for errors only after it hydrates, so a
+    // single early throw was sometimes missed (flaky). Throw until it is listening;
+    // the same error is sent only once, which the end of this test still checks.
+    await expect.poll(async () => {
+      await app.evaluate(() => {
+        setTimeout(() => {
+          throw new TypeError('Boom from the test');
+        });
       });
-    });
-    const [call] = await waitForRpc(db, 'report_error');
+      return rpcCalls(db, 'report_error').length;
+    }, { message: 'report_error was called' }).toBeGreaterThanOrEqual(1);
+    const [call] = rpcCalls(db, 'report_error');
     expect(call.args).toMatchObject({ p_source: 'browser', p_message: 'TypeError: Boom from the test', p_path: '/network' });
     expect(JSON.stringify(call.args)).not.toContain('secret');
 

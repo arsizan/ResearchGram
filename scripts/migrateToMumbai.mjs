@@ -1,5 +1,6 @@
 /**
- * Moves ResearchGram from the Sydney Supabase project to the Mumbai one.
+ * 9 Nov 2026: AcademicOrbit rename.
+ * Moves AcademicOrbit from the Sydney Supabase project to the Mumbai one.
  *
  *   node --env-file=.env.migrate scripts/migrateToMumbai.mjs --dry-run
  *   node --env-file=.env.migrate scripts/migrateToMumbai.mjs

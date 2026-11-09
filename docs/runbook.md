@@ -1,7 +1,7 @@
-# ResearchGram operations runbook
+# AcademicOrbit operations runbook <!-- 9 Nov 2026: AcademicOrbit rename -->
 
 What to do regularly, and what to do when something goes wrong. Production is the
-Supabase project in Mumbai and the Vercel project `research-gram`.
+Supabase project in Mumbai and the Vercel project `academicorbit`. <!-- 9 Nov 2026: AcademicOrbit rename -->
 
 ## 1. Backups
 
@@ -23,11 +23,12 @@ Needs the PostgreSQL 17 client tools (`pg_dump`, `pg_restore`), installed once f
    database password in it.
 2. Run (one command, all on one line):
 
+   <!-- 9 Nov 2026: AcademicOrbit rename -->
    ```powershell
-   pg_dump --dbname "PASTE-CONNECTION-STRING" --format=custom --no-owner --no-privileges --schema=public --schema=auth --schema=storage --file "D:\ResearchGram-backups\rg-2026-10-20.dump"
+   pg_dump --dbname "PASTE-CONNECTION-STRING" --format=custom --no-owner --no-privileges --schema=public --schema=auth --schema=storage --file "D:\AcademicOrbit-backups\ao-2026-11-10.dump"
    ```
 
-3. Check the file is not empty: `pg_restore --list "D:\ResearchGram-backups\rg-2026-10-20.dump"`
+3. Check the file is not empty: `pg_restore --list "D:\AcademicOrbit-backups\ao-2026-11-10.dump"` <!-- 9 Nov 2026: AcademicOrbit rename -->
    prints a long table of contents.
 
 Rules for backup files:
@@ -50,10 +51,11 @@ chat files). Copy them with every database dump:
    named `backup`. In the project folder create `.env.backup` (git-ignored; it stays on
    this computer):
 
+   <!-- 9 Nov 2026: AcademicOrbit rename -->
    ```
    SUPABASE_URL=https://<project-ref>.supabase.co
    SUPABASE_SECRET_KEY=sb_secret_...
-   BACKUP_DIR=D:\ResearchGram-backups\files
+   BACKUP_DIR=D:\AcademicOrbit-backups\files
    ```
 
 2. Run `npm run backup:files`. Each run makes a new dated folder inside `BACKUP_DIR`
@@ -69,7 +71,7 @@ A backup that was never restored is a hope, not a backup. The Free plan allows t
 active projects, so with only production running there is room for a scratch project:
 
 1. Create a scratch Supabase project (any region).
-2. `pg_restore --dbname "SCRATCH-CONNECTION-STRING" --no-owner --clean --if-exists "D:\...\rg-latest.dump"`
+2. `pg_restore --dbname "SCRATCH-CONNECTION-STRING" --no-owner --clean --if-exists "D:\...\ao-latest.dump"` <!-- 9 Nov 2026: AcademicOrbit rename -->
    (some "already exists" messages about Supabase's own schemas are normal).
 3. Open a few tables and count rows (`select count(*) from public.profiles;` and so on),
    and compare one or two files with the file backup's `manifest.json`.

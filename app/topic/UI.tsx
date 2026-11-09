@@ -1,7 +1,8 @@
 "use client";
 
 import AppNav from "@/components/AppNav";
-import ResearchGramSkeleton from "@/components/ResearchGramSkeleton";
+// 9 Nov 2026: AcademicOrbit rename
+import AppSkeleton from "@/components/AppSkeleton";
 import PostList from "@/components/posts/PostList";
 import type { PostActions } from "@/lib/posts/usePostActions";
 import type { Post } from "@/lib/posts/types";
@@ -35,7 +36,8 @@ export default function TopicUI({
   handleGoToRecommendations,
 }: TopicUIProps) {
   if (loading) {
-    return <ResearchGramSkeleton activePage="feed" variant="feed" />;
+    // 9 Nov 2026: AcademicOrbit rename
+    return <AppSkeleton activePage="feed" variant="feed" />;
   }
 
   return (

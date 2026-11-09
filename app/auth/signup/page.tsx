@@ -74,7 +74,8 @@ export default function SignUpPage() {
     }
 
     if (!ageConfirmed) {
-      showError(`ResearchGram accounts are for people aged ${MINIMUM_AGE} or older. Tick the box to confirm your age.`)
+      // 9 Nov 2026: AcademicOrbit rename
+      showError(`AcademicOrbit accounts are for people aged ${MINIMUM_AGE} or older. Tick the box to confirm your age.`)
       setConsentProblem('age')
       ageRef.current?.focus()
       return
@@ -155,7 +156,8 @@ export default function SignUpPage() {
       >
         <h1 className="text-3xl font-bold text-gray-900">Sign Up</h1>
         <p className="mt-2 text-sm text-gray-600">
-          Create your ResearchGram academic profile.
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          Create your AcademicOrbit profile.
         </p>
 
         <div className="mt-6 space-y-4">

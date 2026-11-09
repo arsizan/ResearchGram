@@ -84,7 +84,8 @@ export default function TermsGate({ userId }: { userId: string }) {
     setProblem("");
 
     if (!ageConfirmed) {
-      setProblem(`ResearchGram is for people aged ${MINIMUM_AGE} or older. Tick the box to confirm your age.`);
+      // 9 Nov 2026: AcademicOrbit rename
+      setProblem(`AcademicOrbit is for people aged ${MINIMUM_AGE} or older. Tick the box to confirm your age.`);
       firstFieldRef.current?.focus();
       return;
     }
@@ -153,8 +154,9 @@ export default function TermsGate({ userId }: { userId: string }) {
           </>
         ) : (
           <>
-            ResearchGram now has {termsLinks}. They explain what we store, who can see it and the rules for using
-            ResearchGram. Please read them and confirm to continue.
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            AcademicOrbit now has {termsLinks}. They explain what we store, who can see it and the rules for using
+            AcademicOrbit. Please read them and confirm to continue.
           </>
         )}
       </p>

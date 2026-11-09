@@ -347,7 +347,8 @@ export function usePostActions({
       return;
     }
 
-    notify("Report submitted. Thank you for helping keep ResearchGram safe.", "success");
+    // 9 Nov 2026: AcademicOrbit rename
+    notify("Report submitted. Thank you for helping keep AcademicOrbit safe.", "success");
   };
 
   return {

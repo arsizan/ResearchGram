@@ -151,7 +151,8 @@ export default function ResearchersUI({
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0">
                             <h2 className="truncate text-lg font-bold text-gray-950">
-                              {profile.full_name || "ResearchGram User"}
+                              {/* 9 Nov 2026: AcademicOrbit rename */}
+                              {profile.full_name || "AcademicOrbit User"}
                             </h2>
 
                             <p className="mt-1 text-sm text-gray-500">

@@ -18,8 +18,9 @@
 import { generateStructured } from "./provider";
 import { AiError } from "./errors";
 
-const SYSTEM = `You are the router in front of ResearchGram's research assistant.
-ResearchGram is an academic collaboration platform for university students and
+// 9 Nov 2026: AcademicOrbit rename
+const SYSTEM = `You are the router in front of AcademicOrbit's research assistant.
+AcademicOrbit is an academic collaboration platform for university students and
 faculty. Members publish research notes and papers, control who may read a full
 paper, request and offer collaboration, find mentors, run project workspaces, and
 message each other. Its main pages are Feed, Discover (literature search),
@@ -29,7 +30,7 @@ Classify the user's message into exactly one intent:
 
 - "research" — they want to know something about a research topic, a field, a
   method, or the published literature. This is the common case.
-- "product_help" — they are asking how to do something on ResearchGram itself.
+- "product_help" — they are asking how to do something on AcademicOrbit itself.
 - "chit_chat" — a greeting, thanks, small talk, or a question about you.
 - "general_knowledge" — a factual question that is not about the research
   literature: history, geography, definitions, who holds an office, how something
@@ -44,7 +45,7 @@ Then:
   empty.
 - For every other intent: write the reply yourself, 1 to 3 short sentences, warm
   and plain. Leave search_query empty. For product_help answer only from the
-  description of ResearchGram above; if you do not know, say so and suggest they
+  description of AcademicOrbit above; if you do not know, say so and suggest they
   look on the relevant page. For too_vague, name the one detail that would let you
   search.
 - For "general_knowledge", answer from your own knowledge — but if the answer is
@@ -143,7 +144,8 @@ const SMALL_TALK =
   /^(hi|hey+|hello+|yo|salam|assalamu?\s?alaikum|good\s(morning|afternoon|evening|night)|how\s(are|r)\s(you|u)|thanks?|thank\s(you|u)|ty|tnx|ok|okay|k|bye|goodbye|see\syou|nice|cool|great)[\s!.?]*$/i;
 
 const SMALL_TALK_REPLY =
-  "Hello. Ask me about any research topic and I will find the papers on it, summarise what they say, and show you who on ResearchGram works in that area.";
+  // 9 Nov 2026: AcademicOrbit rename
+  "Hello. Ask me about any research topic and I will find the papers on it, summarise what they say, and show you who on AcademicOrbit works in that area.";
 
 export async function classifyQuestion(
   question: string,

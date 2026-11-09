@@ -149,7 +149,8 @@ test('muting a chat keeps its unread messages out of the badge', async ({ app, d
   for (const [chat, sender] of [[CHAT_2, uid(3)], [CHAT_3, uid(4)]]) {
     db.tables.messages.push({ id: uid(4000 + db.tables.messages.length), conversation_id: chat, sender_id: sender, body: 'New!', message_text: null, read_at: null, is_deleted: false, created_at: new Date(now + 60_000).toISOString() });
   }
-  await app.evaluate(() => window.dispatchEvent(new Event('researchgram:refresh-nav-counts')));
+  // 9 Nov 2026: AcademicOrbit rename
+  await app.evaluate(() => window.dispatchEvent(new Event('academicorbit:refresh-nav-counts')));
 
   // Only the chat that is not muted counts.
   await expect(nav.getByRole('link', { name: /^Messages\s*, 1 unread$/ })).toBeVisible();

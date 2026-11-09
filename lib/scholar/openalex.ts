@@ -116,8 +116,9 @@ async function getJson(url: URL, timeoutMs = 8000): Promise<unknown> {
         headers: {
           Accept: "application/json",
           "User-Agent": MAILTO
-            ? `ResearchGram/1.0 (mailto:${MAILTO})`
-            : "ResearchGram/1.0",
+            // 9 Nov 2026: AcademicOrbit rename
+            ? `AcademicOrbit/1.0 (mailto:${MAILTO})`
+            : "AcademicOrbit/1.0",
         },
         // Papers do not change minute to minute. Let Next cache the upstream call.
         next: { revalidate: 60 * 60 * 24 },

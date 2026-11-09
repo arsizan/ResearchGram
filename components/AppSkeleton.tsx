@@ -14,7 +14,8 @@ type SkeletonVariant =
   | "network"
   | "generic";
 
-type ResearchGramSkeletonProps = {
+// 9 Nov 2026: AcademicOrbit rename
+type AppSkeletonProps = {
   activePage: ActivePage;
   variant?: SkeletonVariant;
   title?: string;
@@ -351,10 +352,11 @@ function GenericSkeleton() {
   );
 }
 
-export default function ResearchGramSkeleton({
+// 9 Nov 2026: AcademicOrbit rename
+export default function AppSkeleton({
   activePage,
   variant = "generic",
-}: ResearchGramSkeletonProps) {
+}: AppSkeletonProps) {
   return (
     <main className="min-h-screen bg-slate-50" aria-busy="true">
       <AppNav activePage={activePage} />

@@ -84,8 +84,9 @@ export default function AssistantAnswerBlock({
           {answer.kind !== "chit_chat" && (
             <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               <Sparkles className="h-3 w-3 text-primary" aria-hidden="true" />
+              {/* 9 Nov 2026: AcademicOrbit rename */}
               {answer.kind === "product_help"
-                ? "About ResearchGram"
+                ? "About AcademicOrbit"
                 : answer.kind === "general_knowledge"
                   ? "General knowledge · not from the papers"
                   : answer.kind === "unclear"
@@ -221,7 +222,8 @@ export default function AssistantAnswerBlock({
         <div>
           <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             <Users className="h-3 w-3 text-primary" aria-hidden="true" />
-            On ResearchGram
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            On AcademicOrbit
           </p>
 
           <ul className="mt-2 flex flex-col gap-2">

@@ -52,7 +52,8 @@ function sortByNewest(requests: UnifiedRequestView[]) {
 
 function getProfileName(profile: Profile | null | undefined) {
   return (
-    profile?.full_name || profile?.email?.split("@")[0] || "ResearchGram User"
+    // 9 Nov 2026: AcademicOrbit rename
+    profile?.full_name || profile?.email?.split("@")[0] || "AcademicOrbit User"
   );
 }
 
@@ -435,7 +436,8 @@ const loadRequests = async () => {
     await loadRequests();
 
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new Event("researchgram:refresh-nav-counts"));
+      // 9 Nov 2026: AcademicOrbit rename
+      window.dispatchEvent(new Event("academicorbit:refresh-nav-counts"));
     }
 
     setUpdatingId(null);

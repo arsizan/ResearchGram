@@ -1,11 +1,11 @@
-# ResearchGram
+# AcademicOrbit <!-- 9 Nov 2026: AcademicOrbit rename -->
 
 An academic network for students, faculty and alumni: publish research notes and
 papers, decide who may read the full text, find collaborators and mentors, run
 project workspaces, message each other (text, files and voice messages), and
 search 250 million published works with a research assistant.
 
-Live: <https://research-gram.vercel.app>
+Live: <https://www.academicorbit.com> <!-- 9 Nov 2026: AcademicOrbit rename -->
 
 ## Stack
 

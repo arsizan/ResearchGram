@@ -417,7 +417,8 @@ export default function AdminClient() {
           <ShieldCheck className="mx-auto h-10 w-10 text-muted-foreground" aria-hidden="true" />
           <h1 className="mt-4 text-2xl font-extrabold text-foreground">Admins only</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            This page is for ResearchGram moderators. If you should have access, ask the project owner.
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            This page is for AcademicOrbit moderators. If you should have access, ask the project owner.
           </p>
           <Link href="/feed" className="mt-6 inline-block rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-primary/90">
             Back to the feed

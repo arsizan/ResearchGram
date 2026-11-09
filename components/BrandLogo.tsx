@@ -1,11 +1,13 @@
 import Image from "next/image";
 
 /**
- * The ResearchGram mark (audit RG-35). The file is 192px (8 KB) instead of the
+ * 9 Nov 2026: AcademicOrbit rename.
+ * The AcademicOrbit mark (audit RG-35). The file is 192px (8 KB) instead of the
  * original 1254px (770 KB), and next/image sends each screen a WebP/AVIF copy
  * at the size it is shown at.
  *
- * `alt` stays empty when the name "ResearchGram" is written next to the logo,
+ * 9 Nov 2026: AcademicOrbit rename.
+ * `alt` stays empty when the name "AcademicOrbit" is written next to the logo,
  * so screen readers do not read the name twice.
  */
 export default function BrandLogo({
@@ -23,7 +25,8 @@ export default function BrandLogo({
 }) {
   return (
     <Image
-      src="/logos/researchgram-logo.png"
+      // 9 Nov 2026: AcademicOrbit rename
+      src="/logos/academicorbit-logo.png"
       alt={alt}
       width={size}
       height={size}

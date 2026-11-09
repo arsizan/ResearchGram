@@ -321,7 +321,8 @@ export default function HomePage() {
           <Link href="/" className="flex items-center gap-2.5 flex-shrink-0">
             <BrandLogo size={32} className="h-8 w-8" eager />
             <span className="font-extrabold text-lg tracking-tight text-foreground">
-              Research<span className="text-primary">Gram</span>
+              {/* 9 Nov 2026: AcademicOrbit rename */}
+              Academic<span className="text-primary">Orbit</span>
             </span>
           </Link>
 
@@ -439,7 +440,8 @@ export default function HomePage() {
 
             <Reveal direction="left" delay={160}>
               <p className="text-base lg:text-lg text-muted-foreground leading-relaxed mt-6 max-w-xl">
-                ResearchGram connects students, faculty, researchers, and
+                {/* 9 Nov 2026: AcademicOrbit rename */}
+                AcademicOrbit connects students, faculty, researchers, and
                 alumni from institutions everywhere in one place — share
                 research, find collaborators, manage workspaces, and message
                 your team without juggling five different apps.
@@ -481,7 +483,8 @@ export default function HomePage() {
           <Reveal delay={200} className="relative">
             <div
               role="img"
-              aria-label="Preview of ResearchGram: a research post in the feed, project progress and a new collaboration request"
+              // 9 Nov 2026: AcademicOrbit rename
+              aria-label="Preview of AcademicOrbit: a research post in the feed, project progress and a new collaboration request"
             >
             <div inert className="relative mx-auto max-w-md lg:max-w-none">
               {/* main card */}
@@ -493,7 +496,8 @@ export default function HomePage() {
                     <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                   </div>
                   <span className="text-[10px] font-bold text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                    researchgram.app/feed
+                    {/* 9 Nov 2026: AcademicOrbit rename */}
+                    academicorbit.com/feed
                   </span>
                 </div>
                 <FeedPreviewMock />
@@ -569,7 +573,8 @@ export default function HomePage() {
               Every tool a research team actually needs
             </h2>
             <p className="text-muted-foreground mt-3 leading-relaxed">
-              No more scattered group chats and lost files. ResearchGram brings
+              {/* 9 Nov 2026: AcademicOrbit rename */}
+              No more scattered group chats and lost files. AcademicOrbit brings
               the entire collaboration lifecycle — from idea to publication — into one platform.
             </p>
           </Reveal>
@@ -654,7 +659,8 @@ export default function HomePage() {
           <Reveal delay={200}>
             <div
               role="img"
-              aria-label={`Preview of the ResearchGram ${previewTab} page`}
+              // 9 Nov 2026: AcademicOrbit rename
+              aria-label={`Preview of the AcademicOrbit ${previewTab} page`}
               className="max-w-md mx-auto bg-white rounded-3xl shadow-2xl border border-border overflow-hidden"
             >
               <div inert>
@@ -663,7 +669,8 @@ export default function HomePage() {
                 <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
                 <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                 <span className="text-[10px] font-bold text-muted-foreground bg-card px-2.5 py-1 rounded-full ml-2">
-                  researchgram.app/{previewTab}
+                  {/* 9 Nov 2026: AcademicOrbit rename */}
+                  academicorbit.com/{previewTab}
                 </span>
               </div>
               <div key={previewTab} style={{ animation: "fade-in-up 0.4s ease-out" }}>
@@ -689,7 +696,8 @@ export default function HomePage() {
                 Ready to find your next research collaborator?
               </h2>
               <p className="text-indigo-100 mt-3 max-w-lg mx-auto leading-relaxed">
-                Join ResearchGram and turn your next idea into a real, organized
+                {/* 9 Nov 2026: AcademicOrbit rename */}
+                Join AcademicOrbit and turn your next idea into a real, organized
                 collaboration with the global research community.
               </p>
               <div className="flex flex-wrap justify-center gap-3 mt-8">
@@ -717,7 +725,8 @@ export default function HomePage() {
           <Link href="/" className="flex items-center gap-2.5">
             <BrandLogo size={32} className="h-8 w-8" />
             <span className="font-extrabold text-foreground">
-              Research<span className="text-primary">Gram</span>
+              {/* 9 Nov 2026: AcademicOrbit rename */}
+              Academic<span className="text-primary">Orbit</span>
             </span>
           </Link>
           <p className="text-xs text-muted-foreground text-center">

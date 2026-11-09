@@ -59,7 +59,8 @@ function displayName(profile: ProfileSearchResult | null | undefined) {
   return (
     profile?.full_name ||
     profile?.email?.split("@")[0] ||
-    "ResearchGram User"
+    // 9 Nov 2026: AcademicOrbit rename
+    "AcademicOrbit User"
   );
 }
 
@@ -315,7 +316,8 @@ export default function SearchUI({
 
           <div className="mt-6 flex flex-col gap-3 md:flex-row">
             <input
-              aria-label="Search ResearchGram"
+              // 9 Nov 2026: AcademicOrbit rename
+              aria-label="Search AcademicOrbit"
               enterKeyHint="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}

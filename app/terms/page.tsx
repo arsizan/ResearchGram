@@ -6,7 +6,8 @@ import { MINIMUM_AGE, OPERATOR_DETAILS, OPERATOR_NAME } from "@/lib/legal";
 // Public and indexable: people read it before they sign up.
 export const metadata: Metadata = {
   title: "Terms of Service",
-  description: "The rules for using ResearchGram: accounts, your content, what is not allowed, and how moderation works.",
+  // 9 Nov 2026: AcademicOrbit rename
+  description: "The rules for using AcademicOrbit: accounts, your content, what is not allowed, and how moderation works.",
 };
 
 const list = "list-disc space-y-1.5 pl-5";
@@ -14,10 +15,11 @@ const list = "list-disc space-y-1.5 pl-5";
 const sections: LegalSection[] = [
   {
     id: "about",
-    title: "About ResearchGram",
+    // 9 Nov 2026: AcademicOrbit rename
+    title: "About AcademicOrbit",
     body: (
       <p>
-        ResearchGram is a free, non-commercial academic network run by {OPERATOR_NAME}, {OPERATOR_DETAILS}. It lets
+        AcademicOrbit is a free, non-commercial academic network run by {OPERATOR_NAME}, {OPERATOR_DETAILS}. It lets
         researchers share their work, decide who reads their full papers, find collaborators and mentors, message each
         other and work together in workspaces.
       </p>
@@ -44,7 +46,8 @@ const sections: LegalSection[] = [
     body: (
       <ul className={list}>
         <li>
-          You keep the rights to what you post. You allow ResearchGram to store, copy and show it to the people you
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          You keep the rights to what you post. You allow AcademicOrbit to store, copy and show it to the people you
           choose, only to run the service. This permission ends when your account is deleted, except for copies people
           made themselves, such as files they downloaded. To have a single post, comment or message removed before
           then, write to us.
@@ -56,7 +59,8 @@ const sections: LegalSection[] = [
           web address; see the Privacy Policy.
         </li>
         <li>
-          If you believe something on ResearchGram infringes your rights, report it or write to us. We remove it when
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          If you believe something on AcademicOrbit infringes your rights, report it or write to us. We remove it when
           the claim is valid.
         </li>
       </ul>
@@ -91,9 +95,10 @@ const sections: LegalSection[] = [
     title: "Paper access and collaboration",
     body: (
       <p>
+        {/* 9 Nov 2026: AcademicOrbit rename */}
         When an author approves your access request, you may read and use the paper for your own research and study.
         Do not pass it on without the author&rsquo;s permission. Collaboration requests, connections and workspaces are
-        between members; ResearchGram is not a party to agreements members make with each other.
+        between members; AcademicOrbit is not a party to agreements members make with each other.
       </p>
     ),
   },
@@ -135,7 +140,8 @@ const sections: LegalSection[] = [
     title: "Availability",
     body: (
       <p>
-        ResearchGram is provided free and &ldquo;as is&rdquo;. We work to keep it running and your data safe, but we
+        {/* 9 Nov 2026: AcademicOrbit rename */}
+        AcademicOrbit is provided free and &ldquo;as is&rdquo;. We work to keep it running and your data safe, but we
         cannot promise it will always be available or free of errors, and features may change. Keep your own copies of
         important work.
       </p>
@@ -146,8 +152,9 @@ const sections: LegalSection[] = [
     title: "Liability",
     body: (
       <p>
+        {/* 9 Nov 2026: AcademicOrbit rename */}
         As far as the law allows, we are not responsible for indirect losses, lost data or lost opportunities caused by
-        using ResearchGram. Nothing in these Terms takes away rights you have under the law that cannot be taken away.
+        using AcademicOrbit. Nothing in these Terms takes away rights you have under the law that cannot be taken away.
       </p>
     ),
   },
@@ -156,8 +163,9 @@ const sections: LegalSection[] = [
     title: "Ending your account",
     body: (
       <p>
+        {/* 9 Nov 2026: AcademicOrbit rename */}
         You can delete your account at any time: Profile → Delete my account. We may close an account that breaks these
-        Terms. If ResearchGram itself closes, we will give notice where we can, so you can download your data first.
+        Terms. If AcademicOrbit itself closes, we will give notice where we can, so you can download your data first.
       </p>
     ),
   },
@@ -193,7 +201,8 @@ export default function TermsPage() {
       title="Terms of Service"
       intro={
         <p>
-          These Terms are the agreement between you and ResearchGram. By creating an account, or by accepting them when
+          {/* 9 Nov 2026: AcademicOrbit rename */}
+          These Terms are the agreement between you and AcademicOrbit. By creating an account, or by accepting them when
           asked, you agree to them and to the{" "}
           <Link href="/privacy" className="font-semibold text-primary underline underline-offset-2 hover:no-underline">
             Privacy Policy

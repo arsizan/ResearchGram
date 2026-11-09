@@ -48,7 +48,8 @@ export default function GlobalError({
           }}
         >
           <h1 style={{ margin: 0, fontSize: "1.5rem", fontWeight: 700 }}>
-            ResearchGram could not start
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            AcademicOrbit could not start
           </h1>
 
           <p

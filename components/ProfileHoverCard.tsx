@@ -17,7 +17,8 @@ function getDisplayName(
   fullName: string | null | undefined,
   email: string | null | undefined,
 ) {
-  return fullName || email?.split("@")[0] || "ResearchGram User";
+  // 9 Nov 2026: AcademicOrbit rename
+  return fullName || email?.split("@")[0] || "AcademicOrbit User";
 }
 
 export default function ProfileHoverCard({

@@ -183,7 +183,8 @@ export default function ResearcherDetailUI({
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h1 className="text-3xl font-bold text-gray-950">
-                      {profile.full_name || "ResearchGram User"}
+                      {/* 9 Nov 2026: AcademicOrbit rename */}
+                      {profile.full_name || "AcademicOrbit User"}
                     </h1>
 
                     {isCurrentUser && (

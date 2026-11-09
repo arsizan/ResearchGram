@@ -219,7 +219,8 @@ useEffect(() => {
     const refreshCounts = () => loadCounts(userId);
 
     window.addEventListener("focus", refreshCounts);
-    window.addEventListener("researchgram:refresh-nav-counts", refreshCounts);
+    // 9 Nov 2026: AcademicOrbit rename
+    window.addEventListener("academicorbit:refresh-nav-counts", refreshCounts);
 
     const channel = supabase
       .channel(`app-nav-live-${userId}`)
@@ -278,7 +279,8 @@ useEffect(() => {
     return () => {
       window.removeEventListener("focus", refreshCounts);
       window.removeEventListener(
-        "researchgram:refresh-nav-counts",
+        // 9 Nov 2026: AcademicOrbit rename
+        "academicorbit:refresh-nav-counts",
         refreshCounts,
       );
       supabase.removeChannel(channel);
@@ -340,13 +342,15 @@ useEffect(() => {
               label names it on phones, where the text next to it is hidden. */}
           <Link
             href="/feed"
-            aria-label="ResearchGram home"
+            // 9 Nov 2026: AcademicOrbit rename
+            aria-label="AcademicOrbit home"
             className="flex items-center gap-2.5 flex-shrink-0"
           >
             <BrandLogo size={36} className="h-9 w-9" eager />
 
             <span className="font-extrabold text-lg tracking-tight text-foreground hidden sm:block">
-              Research<span className="text-primary">Gram</span>
+              {/* 9 Nov 2026: AcademicOrbit rename */}
+              Academic<span className="text-primary">Orbit</span>
             </span>
           </Link>
 

@@ -3,14 +3,16 @@ import type { Metadata } from "next";
 /*
  * Site name, address and page metadata (audit RG-34).
  *
- * NEXT_PUBLIC_SITE_URL is the public address, for example
- * https://www.researchgram.net once a domain is chosen. Until then the Vercel
- * address is used. Links in search results and link previews are built from it.
+ * 9 Nov 2026: AcademicOrbit rename.
+ * The public address is https://www.academicorbit.com (www is the main address;
+ * academicorbit.com and the old vercel.app address redirect to it). Set
+ * NEXT_PUBLIC_SITE_URL only to use another address. Links in search results and
+ * link previews are built from it.
  */
-export const SITE_NAME = "ResearchGram";
+export const SITE_NAME = "AcademicOrbit";
 
 export const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL || "https://research-gram.vercel.app"
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.academicorbit.com"
 ).replace(/\/+$/, "");
 
 export const SITE_DESCRIPTION =

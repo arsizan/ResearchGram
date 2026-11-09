@@ -6,7 +6,8 @@
  * value is read here the way a browser reads it, and kept only when it stays
  * on this site.
  */
-const BASE = "https://researchgram.invalid";
+// 9 Nov 2026: AcademicOrbit rename
+const BASE = "https://academicorbit.invalid";
 
 const staysHere = (value: string) => {
   try {

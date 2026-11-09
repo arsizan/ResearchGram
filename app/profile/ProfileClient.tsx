@@ -432,7 +432,8 @@ if (profileData) {
       }
 
       const day = new Date().toISOString().slice(0, 10);
-      downloadJson(data, `researchgram-data-${day}.json`);
+      // 9 Nov 2026: AcademicOrbit rename
+      downloadJson(data, `academicorbit-data-${day}.json`);
       notify("Your data was downloaded as a JSON file.", "success");
     } finally {
       setDownloadingData(false);
@@ -481,7 +482,8 @@ if (profileData) {
       if (error) throw error;
 
       await supabase.auth.signOut({ scope: "local" });
-      notify("Your account was deleted. Thank you for using ResearchGram.", "success");
+      // 9 Nov 2026: AcademicOrbit rename
+      notify("Your account was deleted. Thank you for using AcademicOrbit.", "success");
       router.replace("/");
     } catch (error) {
       logDev("DELETE ACCOUNT ERROR:", error);

@@ -78,7 +78,8 @@ function getDisplayName(profile: Profile | null) {
   return (
     profile?.full_name ||
     profile?.email?.split("@")[0] ||
-    "ResearchGram User"
+    // 9 Nov 2026: AcademicOrbit rename
+    "AcademicOrbit User"
   );
 }
 
@@ -147,7 +148,8 @@ export default function MentorshipUI({
           </h1>
 
           <p className="mt-4 max-w-3xl text-sm leading-7 text-blue-100">
-            ResearchGram compares research interests, skills, expertise,
+            {/* 9 Nov 2026: AcademicOrbit rename */}
+            AcademicOrbit compares research interests, skills, expertise,
             department, and mentor availability to help students request
             academic mentorship.
           </p>
