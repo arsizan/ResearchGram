@@ -1,5 +1,7 @@
 "use client";
 
+// 10 Nov 2026: left column that stops scrolling after its last card
+import { useCallback } from "react";
 import AppNav from "@/components/AppNav";
 
 export type ResearcherProfile = {
@@ -84,6 +86,13 @@ function formatTime(dateString: string | null) {
   }
 }
 
+// 10 Nov 2026: on large screens the left column (About, Expertise, Research
+// Interests) scrolls with the page until its last card is in view, then stays
+// there while the posts keep scrolling (like Facebook's profile page). A
+// column shorter than the window stays just under the top bar instead.
+const STICKY_TOP_PX = 76; // the 60 px top bar + 16 px
+const STICKY_BOTTOM_PX = 24; // kept free under the last card
+
 export default function ResearcherDetailUI({
   loading,
   currentUserId,
@@ -96,6 +105,24 @@ export default function ResearcherDetailUI({
   handleGoToProfile,
   handleGoToFeed,
 }: ResearcherDetailUIProps) {
+  // 10 Nov 2026: where the left column stops (worked out again when its
+  // cards or the window change size)
+  const stickyColumnRef = useCallback((column: HTMLElement | null) => {
+    if (!column) return;
+    const place = () => {
+      const top = window.innerHeight - column.offsetHeight - STICKY_BOTTOM_PX;
+      column.style.top = `${Math.min(STICKY_TOP_PX, Math.round(top))}px`;
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(column);
+    window.addEventListener("resize", place);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", place);
+    };
+  }, []);
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-gray-50">
@@ -163,7 +190,10 @@ export default function ResearcherDetailUI({
           <div className="px-6 pb-8">
             <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-                <div className="-mt-20 h-36 w-36 overflow-hidden rounded-3xl border-4 border-white bg-gradient-to-br from-blue-100 to-indigo-100 shadow-lg">
+                {/* 10 Nov 2026: photo drawn above the cover (relative z-10).
+                    The cover is a positioned element, so it was painted over
+                    the top half of the photo. shrink-0 keeps it square. */}
+                <div className="relative z-10 -mt-20 h-36 w-36 shrink-0 overflow-hidden rounded-3xl border-4 border-white bg-gradient-to-br from-blue-100 to-indigo-100 shadow-lg">
                   {profile.profile_pic_url ? (
                     // Avatar from Supabase Storage: a plain <img> so it does not use
                     // Vercel's image-optimization quota.
@@ -257,7 +287,12 @@ export default function ResearcherDetailUI({
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-3">
-          <section aria-label="About this researcher" className="space-y-6 lg:col-span-1">
+          {/* 10 Nov 2026: sticky left column (lg:sticky lg:self-start; its top comes from stickyColumnRef) */}
+          <section
+            ref={stickyColumnRef}
+            aria-label="About this researcher"
+            className="space-y-6 lg:col-span-1 lg:sticky lg:self-start"
+          >
             <div className="rounded-3xl bg-white p-6 shadow-sm">
               <h2 className="text-xl font-bold text-gray-950">About</h2>
 

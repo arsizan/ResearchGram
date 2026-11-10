@@ -342,9 +342,13 @@ export default function ResearchAssistant() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Open the research assistant"
+        // 10 Nov 2026: on Messages, just above the message box. Below 1024 px
+        // an open chat has no bottom bar any more (components/AppNav.tsx,
+        // hideBottomNav), so the button no longer floats high over the chat;
+        // from 640 px the box is taller (its hint line shows).
         className={`fixed ${
           aboveComposer
-            ? "bottom-[calc(10rem+env(safe-area-inset-bottom))] lg:bottom-28"
+            ? "bottom-[calc(5rem+env(safe-area-inset-bottom))] sm:bottom-[calc(6.5rem+env(safe-area-inset-bottom))] lg:bottom-28"
             : "bottom-[calc(5rem+env(safe-area-inset-bottom))] lg:bottom-6"
         } right-4 lg:right-6 z-[90] flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary motion-reduce:transition-none motion-reduce:hover:scale-100`}
       >

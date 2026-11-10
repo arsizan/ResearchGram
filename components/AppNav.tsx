@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+// 10 Nov 2026: Menu button (useRef, ReactNode)
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -17,6 +18,9 @@ import {
   MessageSquare,
   User,
   GitBranch,
+  // 10 Nov 2026: Menu button
+  Grip,
+  X,
 } from "lucide-react";
 import { logDev } from "@/lib/log";
 
@@ -36,10 +40,22 @@ type ActivePage =
 
 type AppNavProps = {
   activePage: ActivePage;
+  // 10 Nov 2026: what the page shows behind the Menu button (like Facebook's)
+  // on screens narrower than 1024 px, where its side columns are hidden; the
+  // feed passes its shortcuts, trending topics and stats. No menu, no button.
+  menu?: ReactNode;
+  // 10 Nov 2026: no bottom bar on narrow screens (Messages while a chat is
+  // open, so the bar does not cover the message box)
+  hideBottomNav?: boolean;
 };
 
-export default function AppNav({ activePage }: AppNavProps) {
+export default function AppNav({ activePage, menu, hideBottomNav = false }: AppNavProps) {
   const router = useRouter();
+  // 10 Nov 2026: Menu button
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const menuLayerRef = useRef<HTMLDivElement>(null);
+  const menuPanelRef = useRef<HTMLDivElement>(null);
 
   const [userId, setUserId] = useState("");
   const [profilePicUrl, setProfilePicUrl] = useState<string | null>(null);
@@ -287,6 +303,40 @@ useEffect(() => {
     };
   }, [userId, loadCounts]);
 
+  // 10 Nov 2026: Menu button. An open menu takes the focus (so Tab moves
+  // through its links), and closes with Escape (focus back on the button),
+  // with a press anywhere outside it, and when the window becomes wide enough
+  // to show the side columns again.
+  useEffect(() => {
+    if (!menuOpen) return;
+    menuPanelRef.current?.focus();
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setMenuOpen(false);
+      menuButtonRef.current?.focus();
+    };
+    // The dimmed backdrop is part of the menu layer and closes it on click.
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (menuLayerRef.current?.contains(target) || menuButtonRef.current?.contains(target)) return;
+      setMenuOpen(false);
+    };
+    const wide = window.matchMedia("(min-width: 1024px)");
+    const onWidthChange = () => {
+      if (wide.matches) setMenuOpen(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
+    wide.addEventListener("change", onWidthChange);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+      wide.removeEventListener("change", onWidthChange);
+    };
+  }, [menuOpen]);
+
   const handleGlobalSearch = (e?: React.FormEvent) => {
     e?.preventDefault();
     const value = searchText.trim();
@@ -404,6 +454,26 @@ useEffect(() => {
 
           {/* Right controls */}
           <div className="flex items-center gap-1.5 ml-auto flex-shrink-0">
+            {/* 10 Nov 2026: Menu button (nine dots, like Facebook's), only
+                below 1024 px and only on pages that give it something to show */}
+            {menu && (
+              <button
+                ref={menuButtonRef}
+                type="button"
+                onClick={() => setMenuOpen((open) => !open)}
+                aria-label="Menu"
+                aria-haspopup="dialog"
+                aria-expanded={menuOpen}
+                className={`lg:hidden p-2 rounded-xl transition-colors ${
+                  menuOpen
+                    ? "bg-accent text-primary"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Grip aria-hidden="true" className="w-5 h-5" />
+              </button>
+            )}
+
             <NotificationBell />
 
             <button
@@ -439,8 +509,52 @@ useEffect(() => {
         </div>
       </nav>
 
+      {/* 10 Nov 2026: the Menu panel. Outside the top bar on purpose: the
+          bar's blur would make it the frame for these fixed layers. On
+          phones it fills the screen under the top bar; from 640 px it is a
+          panel at the right (two columns from 768 px). Above the assistant
+          button (z-90), below messages and dialogs (z-100 and up). */}
+      {menu && menuOpen && (
+        <div ref={menuLayerRef} className="lg:hidden">
+          <div
+            aria-hidden="true"
+            onClick={() => setMenuOpen(false)}
+            className="fixed inset-x-0 top-[60px] bottom-0 z-[94] bg-slate-900/30"
+          />
+          <div
+            ref={menuPanelRef}
+            role="dialog"
+            aria-label="Menu"
+            tabIndex={-1}
+            // A link or button in the menu also closes it.
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest("a, button")) setMenuOpen(false);
+            }}
+            className="fixed inset-x-0 top-[60px] bottom-0 z-[95] overflow-y-auto overscroll-contain bg-background shadow-xl focus:outline-none sm:left-auto sm:right-4 sm:top-[68px] sm:bottom-auto sm:w-[380px] sm:max-h-[calc(100%-84px)] sm:rounded-2xl sm:border sm:border-border md:w-[640px]"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/95 px-4 py-3 backdrop-blur">
+              <h2 className="text-lg font-extrabold text-foreground">Menu</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  menuButtonRef.current?.focus();
+                }}
+                aria-label="Close the menu"
+                className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <X aria-hidden="true" className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4">{menu}</div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile bottom nav. Narrow side padding so all seven items fit on a
           360px-wide phone; before, Messages and Profile were pushed off screen. */}
+      {/* 10 Nov 2026: left out when the page asks (hideBottomNav) */}
+      {!hideBottomNav && (
       <nav aria-label="Pages" className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur border-t border-border">
         <div
           className="flex items-center justify-around px-2 py-1"
@@ -469,6 +583,8 @@ useEffect(() => {
           ))}
         </div>
       </nav>
+      )}
+      {/* 10 Nov 2026: (end of the hideBottomNav condition above) */}
 
       {/* Older accounts accept the Terms and Privacy Policy once (Phase 5). */}
       {userId && <TermsGate key={userId} userId={userId} />}

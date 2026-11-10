@@ -89,6 +89,8 @@ handleSyncExternalMetrics: () => void;
   handleCoverPhotoSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleUploadProfilePic: () => void;
   handleUploadCover: () => void;
+  // 10 Nov 2026: Cancel next to Save Cover (drops the chosen cover photo)
+  handleCancelCover: () => void;
   handleSave: () => void;
   handleLogout: () => void;
 };
@@ -184,6 +186,8 @@ handleProfilePicSelect,
   handleCoverPhotoSelect,
   handleUploadProfilePic,
   handleUploadCover,
+  // 10 Nov 2026: Cancel next to Save Cover
+  handleCancelCover,
   handleSave,
   handleLogout,
 }: ProfileUIProps) {
@@ -243,34 +247,59 @@ handleProfilePicSelect,
         <div className="absolute inset-0 bg-gradient-to-t from-indigo-900/60 via-indigo-700/20 to-transparent pointer-events-none" />
 
         {/* Cover photo controls */}
-        <div className="absolute bottom-4 right-4 lg:right-6 flex items-center gap-2">
-          {previewCoverUrl && coverPhotoFile ? (
-            <button
-              onClick={handleUploadCover}
-              disabled={uploading}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              {uploading ? (
-                <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-              ) : (
-                <Upload className="w-4 h-4" />
-              )}
-              {uploading ? "Uploading…" : "Save Cover"}
-            </button>
-          ) : null}
-          <button
-            onClick={() => coverFileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm rounded-xl text-white text-sm font-semibold border border-white/20 hover:bg-black/55 transition-colors"
-          >
-            <Camera className="w-4 h-4" /> Change Cover
-          </button>
-          <input
-            ref={coverFileInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleCoverPhotoSelect}
-          />
+        {/* 10 Nov 2026: cover buttons moved out from under the profile card.
+            The card covers the bottom 40 px of the cover, so Save Cover used
+            to slide behind it. On phones the buttons sit at the top of the
+            cover; from 640 px wide, just above the card, lined up with its
+            right edge. A chosen photo shows Cancel and Save Cover until it is
+            saved (like Facebook). */}
+        <div className="absolute inset-x-0 top-3 sm:top-auto sm:bottom-14">
+          <div className="mx-auto flex max-w-[1100px] flex-wrap items-center justify-end gap-2 px-4 lg:px-6">
+            {previewCoverUrl && coverPhotoFile ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCancelCover}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm rounded-xl text-white text-sm font-semibold border border-white/20 shadow-lg hover:bg-black/55 transition-colors disabled:opacity-50"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" /> Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleUploadCover}
+                  disabled={uploading}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold shadow-lg hover:bg-primary/90 transition-colors disabled:opacity-50"
+                >
+                  {uploading ? (
+                    <div className="w-3 h-3 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                  ) : (
+                    <Upload className="w-4 h-4" aria-hidden="true" />
+                  )}
+                  {uploading ? "Uploading…" : "Save Cover"}
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => coverFileInputRef.current?.click()}
+                className="flex items-center gap-2 px-4 py-2 bg-black/40 backdrop-blur-sm rounded-xl text-white text-sm font-semibold border border-white/20 shadow-lg hover:bg-black/55 transition-colors"
+              >
+                <Camera className="w-4 h-4" aria-hidden="true" /> Change Cover
+              </button>
+            )}
+            <input
+              ref={coverFileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              // 10 Nov 2026: emptied after each choice, so the same photo can be chosen again after Cancel
+              onChange={(event) => {
+                handleCoverPhotoSelect(event);
+                event.target.value = "";
+              }}
+            />
+          </div>
         </div>
       </div>
 

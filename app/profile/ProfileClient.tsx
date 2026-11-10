@@ -190,6 +190,13 @@ if (profileData) {
     reader.readAsDataURL(file);
   };
 
+  // 10 Nov 2026: Cancel next to Save Cover: the chosen photo is dropped and
+  // the saved cover shows again (nothing was uploaded yet).
+  const handleCancelCover = () => {
+    setCoverPhotoFile(null);
+    setPreviewCoverUrl("");
+  };
+
   // Returns null when the file is not allowed (the reason is shown to the user).
   // Pictures are made smaller first (Phase 5), so a large phone photo fits.
   const uploadFile = async (original: File, folder: string, fileName: string, maxSide: number) => {
@@ -548,6 +555,8 @@ setPersonalWebsiteUrl={setPersonalWebsiteUrl}
       handleCoverPhotoSelect={handleCoverPhotoSelect}
       handleUploadProfilePic={handleUploadProfilePic}
       handleUploadCover={handleUploadCover}
+      // 10 Nov 2026: Cancel next to Save Cover
+      handleCancelCover={handleCancelCover}
       handleSave={handleSave}
       handleLogout={handleLogout}
     />

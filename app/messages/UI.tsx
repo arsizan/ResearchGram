@@ -888,12 +888,20 @@ const messageStream: StreamItem[] = useMemo(() => {
   })();
 
   return (
-    <main className="min-h-screen bg-background">
-      <AppNav activePage="messages" />
+    // 10 Nov 2026: min-h-dvh where the browser knows it: the page is then
+    // exactly as tall as the window, so it cannot scroll the chat header
+    // under the top bar on a phone
+    <main className="min-h-screen supports-[height:100dvh]:min-h-dvh bg-background">
+      {/* 10 Nov 2026: on screens narrower than 1024 px the bottom bar is left
+          out while a chat is open (as in Messenger), so it no longer covers
+          the message box; the list of chats keeps it. */}
+      <AppNav activePage="messages" hideBottomNav={mobileChatOpen} />
       {/* Page title for screen readers; the design has no visible one (RG-32). */}
       <h1 className="sr-only">Messages</h1>
 
-      <div className="max-w-[1440px] mx-auto" style={{ height: "calc(100vh - 60px)" }}>
+      {/* 10 Nov 2026: height of the visible window (dvh) where the browser
+          knows it, so a phone's address bar does not hide the message box */}
+      <div className="max-w-[1440px] mx-auto h-[calc(100vh-60px)] supports-[height:100dvh]:h-[calc(100dvh-60px)]">
         <div className="flex h-full overflow-hidden">
 
           {/* ─────────────────── LEFT: conversation list ────────────────── */}
@@ -1006,7 +1014,8 @@ const messageStream: StreamItem[] = useMemo(() => {
             </div>
 
             {/* Conversation list */}
-            <div className="flex-1 overflow-y-auto py-1 [&::-webkit-scrollbar]:hidden">
+            {/* 10 Nov 2026: room at the end (pb-20) so the last chat can scroll above the phone bottom bar */}
+            <div className="flex-1 overflow-y-auto pt-1 pb-20 lg:pb-1 [&::-webkit-scrollbar]:hidden">
               {visibleConversations.length === 0 ? (
                 <div className="px-6 py-16 text-center">
                   <MessageSquare className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -1208,7 +1217,9 @@ const messageStream: StreamItem[] = useMemo(() => {
                 <div
                   ref={messagesScrollRef}
                   onScroll={rememberScrollPosition}
-                  className="flex-1 overflow-y-auto p-4 space-y-4 [&::-webkit-scrollbar]:hidden"
+                  // 10 Nov 2026: room at the end (pb-20) so the newest message
+                  // scrolls clear of the assistant's round button above the message box
+                  className="flex-1 overflow-y-auto px-4 pt-4 pb-20 space-y-4 [&::-webkit-scrollbar]:hidden"
                 >
                   {hasOlderMessages && messageStream.length > 0 && handleLoadOlderMessages && (
                     <div className="flex justify-center">

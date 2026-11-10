@@ -710,10 +710,21 @@ if (loading) {
     </section>
   );
 
+  // 10 Nov 2026: below 1024 px the two side columns are hidden; the Menu
+  // button in the top bar (components/AppNav.tsx) shows them instead, one
+  // under the other on phones and side by side from 768 px.
+  const SidebarMenu = (
+    <div className="grid gap-4 md:grid-cols-2 md:items-start">
+      {LeftSidebar}
+      {RightSidebar}
+    </div>
+  );
+
   // ── Main return ───────────────────────────────────────────────────────────
   return (
     <main className="min-h-screen bg-background">
-      <AppNav activePage="feed" />
+      {/* 10 Nov 2026: Menu button with the side columns */}
+      <AppNav activePage="feed" menu={SidebarMenu} />
       {/* Page title for screen readers; the design has no visible one (RG-32). */}
       <h1 className="sr-only">Feed</h1>
 
