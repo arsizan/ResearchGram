@@ -355,3 +355,16 @@
   opacity: 1;
   transform: translateX(0);
 }
+
+/* 12 Nov 2026: SEO and accessibility. The landing page's sections fade in
+   with JavaScript; without it (some search engines and link-preview bots) or
+   when the visitor asks for less motion, they are shown at once instead of
+   staying invisible. */
+@media (scripting: none), (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-left {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}

@@ -397,7 +397,8 @@ await check('error log', async () => {
   // Personal details are blanked out, and the same bug on different people's pages is one row.
   const id1 = uid(4001), id2 = uid(4002);
   const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjMifQ.c2lnbmF0dXJl';
-  await report(null, ['browser', `Profile ${id1} of rahman.sizan@gmail.com failed with ${jwt}`,
+  // 12 Nov 2026: a made-up address here (this repository is public)
+  await report(null, ['browser', `Profile ${id1} of some.researcher@example.com failed with ${jwt}`,
     // 9 Nov 2026: AcademicOrbit rename
     `at load (https://www.academicorbit.com/_next/static/chunks/a.js?dpl=dpl_123:1:2)\nat /auth/reset-password?token_hash=abc&type=recovery`,
     `/researchers/${id1}`, null, null]);

@@ -7,6 +7,8 @@ export const metadata: Metadata = {
   title: "Privacy Policy",
   // 9 Nov 2026: AcademicOrbit rename
   description: "What AcademicOrbit collects, why, who can see it, where it is stored, and your choices.",
+  // 12 Nov 2026: SEO (this page's own address, not the home page's)
+  alternates: { canonical: "/privacy" },
 };
 
 const list = "list-disc space-y-1.5 pl-5";

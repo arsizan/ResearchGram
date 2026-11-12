@@ -8,6 +8,8 @@ export const metadata: Metadata = {
   title: "Terms of Service",
   // 9 Nov 2026: AcademicOrbit rename
   description: "The rules for using AcademicOrbit: accounts, your content, what is not allowed, and how moderation works.",
+  // 12 Nov 2026: SEO (this page's own address, not the home page's)
+  alternates: { canonical: "/terms" },
 };
 
 const list = "list-disc space-y-1.5 pl-5";

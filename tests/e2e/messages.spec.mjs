@@ -18,7 +18,10 @@ test('sending text saves one message; the database moves the chat to the top (RG
   await app.getByLabel('Message', { exact: true }).fill('Hello from the test');
   await app.getByRole('button', { name: 'Send message' }).click();
 
-  await expect(app.getByText('Hello from the test')).toBeVisible();
+  // 12 Nov 2026: the message bubble itself. The same words can also show up
+  // as the chat's last-message preview in the list, which made this check
+  // fail now and then (two matches).
+  await expect(app.locator('p.whitespace-pre-wrap', { hasText: 'Hello from the test' })).toBeVisible();
   const saved = db.tables.messages.find((m) => m.body === 'Hello from the test');
   expect(saved).toMatchObject({ conversation_id: CHAT_1, sender_id: db.U });
   expect(saved.attachment_path ?? null).toBeNull();

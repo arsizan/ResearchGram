@@ -1,4 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
+// 12 Nov 2026: security (random demo password, see below)
+import { randomBytes } from "node:crypto";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -16,7 +18,17 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 });
 
 // 9 Nov 2026: AcademicOrbit rename
-const DEFAULT_PASSWORD = "AcademicOrbit@12345";
+// 12 Nov 2026: security. No password in the code any more: this repository is
+// public, so anyone could have signed in as a demo account. Set DEMO_PASSWORD
+// (12 or more characters) to choose one; otherwise every run makes a long
+// random password that is shown only in your terminal at the end.
+const DEFAULT_PASSWORD =
+  process.env.DEMO_PASSWORD || `${randomBytes(18).toString("base64url")}Aa1!`;
+
+if (DEFAULT_PASSWORD.length < 12) {
+  console.error("DEMO_PASSWORD must be at least 12 characters long.");
+  process.exit(1);
+}
 
 const demoProfiles = [
   {

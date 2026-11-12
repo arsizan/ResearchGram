@@ -5,6 +5,8 @@ import ResearchAssistant from "@/components/assistant/ResearchAssistant";
 import FeedbackHost from "@/components/FeedbackHost";
 import ErrorReporter from "@/components/ErrorReporter";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+// 12 Nov 2026: SEO (contact address in the structured data)
+import { CONTACT_EMAIL, OPERATOR_NAME } from "@/lib/legal";
 
 /*
  * Fonts are served from this app (app/fonts, SIL Open Font License 1.1)
@@ -95,19 +97,80 @@ export const metadata: Metadata = {
   },
   description: SITE_DESCRIPTION,
   applicationName: SITE_NAME,
+  // 12 Nov 2026: SEO. Words people search with, the home page's one address
+  // (pages with their own address set their own canonical), and the owner.
+  keywords: [
+    "AcademicOrbit",
+    "research collaboration",
+    "academic social network",
+    "find research collaborators",
+    "research mentors",
+    "share research papers",
+    "Bangladesh researchers",
+    "university research platform",
+  ],
+  alternates: { canonical: "/" },
+  // 12 Nov 2026: SEO. Search engines may list the site and show large image
+  // previews and full snippets. Pages behind the login replace this with
+  // noindex (privatePage in lib/site.ts).
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: { index: true, follow: true, "max-image-preview": "large", "max-snippet": -1 },
+  },
+  authors: [{ name: SITE_NAME, url: SITE_URL }],
+  creator: SITE_NAME,
+  category: "education",
   openGraph: {
     type: "website",
     siteName: SITE_NAME,
-    title: SITE_NAME,
+    // 12 Nov 2026: SEO (full title in link previews). No og:url here: every
+    // page would inherit it, and a shared /privacy link would show the home page.
+    title: `${SITE_NAME} · Research collaboration platform`,
     description: SITE_DESCRIPTION,
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: SITE_NAME,
+    // 12 Nov 2026: SEO
+    title: `${SITE_NAME} · Research collaboration platform`,
     description: SITE_DESCRIPTION,
   },
 };
+
+// 12 Nov 2026: SEO. Structured data (schema.org) so Google knows the site's
+// name, logo and official profiles: the site name shown in results and the
+// knowledge panel come from this.
+const STRUCTURED_DATA = JSON.stringify([
+  {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    "@id": `${SITE_URL}/#website`,
+    name: SITE_NAME,
+    alternateName: "Academic Orbit",
+    url: `${SITE_URL}/`,
+    description: SITE_DESCRIPTION,
+    inLanguage: "en",
+    publisher: { "@id": `${SITE_URL}/#organization` },
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "@id": `${SITE_URL}/#organization`,
+    name: SITE_NAME,
+    url: `${SITE_URL}/`,
+    logo: `${SITE_URL}/logos/academicorbit-logo.png`,
+    description: SITE_DESCRIPTION,
+    ...(CONTACT_EMAIL ? { email: CONTACT_EMAIL } : {}),
+    // The person the legal pages already name as running the site.
+    founder: { "@type": "Person", name: OPERATOR_NAME },
+    sameAs: [
+      "https://www.linkedin.com/company/academicorbit",
+      "https://www.facebook.com/academicorbitapp",
+      "https://github.com/academicorbit",
+    ],
+  },
+]).replace(/</g, "\\u003c");
 
 export default function RootLayout({
   children,
@@ -117,6 +180,11 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${fontVariables} h-full antialiased`}>
       <body className="min-h-full flex flex-col">
+        {/* 12 Nov 2026: SEO structured data (above) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: STRUCTURED_DATA }}
+        />
         {children}
 
         {/*

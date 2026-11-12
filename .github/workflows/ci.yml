@@ -8,6 +8,9 @@ on:
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+# 12 Nov 2026: security. The workflow's GitHub token can only read.
+permissions:
+  contents: read
 
 jobs:
   verify:

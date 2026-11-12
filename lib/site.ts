@@ -15,8 +15,10 @@ export const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL || "https://www.academicorbit.com"
 ).replace(/\/+$/, "");
 
+// 12 Nov 2026: SEO. The main search phrase first ("research collaboration
+// platform") and who it is for, in under 160 characters (what Google shows).
 export const SITE_DESCRIPTION =
-  "Publish research notes, control who reads your full papers, find collaborators and mentors, and search 250 million published works.";
+  "Free research collaboration platform for students, faculty and alumni. Publish research, find collaborators and mentors, and search 250M published works.";
 
 /**
  * Metadata for a page behind the login: it gets a title, but search engines

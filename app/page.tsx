@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import BrandLogo from "@/components/BrandLogo";
+// 12 Nov 2026: SEO (the FAQ names who runs the site, as the legal pages do)
+import { OPERATOR_DETAILS, OPERATOR_NAME } from "@/lib/legal";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
@@ -19,6 +21,12 @@ import {
   X,
   Send,
   Check,
+  // 12 Nov 2026: SEO ("Who it's for" and FAQ sections)
+  GraduationCap,
+  Presentation,
+  FlaskConical,
+  Handshake,
+  ChevronDown,
 } from "lucide-react";
 
 /* ── Scroll-reveal wrapper (vanilla IntersectionObserver, no extra deps) ── */
@@ -85,7 +93,8 @@ bg: "bg-neutral-100",
   {
     icon: GitBranch,
     title: "Collaboration Requests",
-    desc: "Send and receive structured requests to join a research idea. Accepted requests open a dedicated chat and shared workspace automatically.",
+    // 12 Nov 2026: says what really happens (accepting opens a chat; a workspace is made on the Workspace page)
+    desc: "Send and receive structured requests to join a research idea. An accepted request opens a dedicated chat for the collaboration right away.",
   color: "text-black",
 bg: "bg-neutral-100",
   },
@@ -147,8 +156,87 @@ const STEPS = [
   {
     n: "03",
     title: "Collaborate in a real workspace",
-    desc: "Accepted requests open a dedicated workspace with tasks, files, milestones, and chat — so the work actually moves forward.",
+    // 12 Nov 2026: says what really happens (the team starts the workspace)
+    desc: "Start a shared workspace with tasks, files, milestones, meetings, and a group chat — so the work actually moves forward.",
   },
+];
+
+// 12 Nov 2026: SEO. Who the platform is for: the words people search with
+// (thesis partner, supervisor, co-authors, mentors, alumni) in plain text.
+const AUDIENCES = [
+  {
+    icon: GraduationCap,
+    title: "Students",
+    desc: "Find a thesis or project partner, a supervisor, and real research experience. Show your skills and interests on your academic profile.",
+  },
+  {
+    icon: Presentation,
+    title: "Faculty & supervisors",
+    desc: "Share research ideas and calls for collaboration, find motivated students, and keep full papers private until you approve each request.",
+  },
+  {
+    icon: FlaskConical,
+    title: "Researchers",
+    desc: "Find co-authors across universities and disciplines, search 250 million published works, and run joint projects in shared workspaces.",
+  },
+  {
+    icon: Handshake,
+    title: "Alumni",
+    desc: "Stay part of your university's research community, mentor students, and keep working with former classmates and teachers.",
+  },
+];
+
+// 12 Nov 2026: SEO. Questions people ask search engines, answered on the
+// page (and the same text as structured data below, as Google asks).
+const FAQS = [
+  {
+    q: "What is AcademicOrbit?",
+    a: "AcademicOrbit is a free research collaboration platform for students, faculty, researchers, and alumni. You can publish research notes and papers, find collaborators and mentors, and work together in shared workspaces with tasks, files, meetings, and chat.",
+  },
+  {
+    q: "Is AcademicOrbit free to use?",
+    a: "Yes. Creating an account and using AcademicOrbit is free.",
+  },
+  {
+    q: "Who can join AcademicOrbit?",
+    a: "Anyone aged 18 or older who studies or does research: undergraduate and postgraduate students, faculty members, researchers, and alumni from any university or institution.",
+  },
+  {
+    q: "How do I find a research collaborator or mentor?",
+    a: "Search researchers by department, skills, and research interests, send a collaboration request on a research post that interests you, or open Find Mentors to see researchers who offer mentorship.",
+  },
+  {
+    q: "Who can read my full paper?",
+    a: "You decide. Share a post with everyone, show only the abstract, or keep the full paper private and approve or reject each access request yourself.",
+  },
+  {
+    q: "Who runs AcademicOrbit?",
+    a: `AcademicOrbit is built and run by ${OPERATOR_NAME}, ${OPERATOR_DETAILS}.`,
+  },
+  {
+    q: "Can I search published research papers?",
+    a: "Yes. Discover searches about 250 million published works from open scholarly databases such as OpenAlex and Semantic Scholar.",
+  },
+];
+
+// 12 Nov 2026: SEO. The FAQ as schema.org structured data ("<" escaped, as
+// the Next.js JSON-LD guide recommends).
+const FAQ_STRUCTURED_DATA = JSON.stringify({
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQS.map(({ q, a }) => ({
+    "@type": "Question",
+    name: q,
+    acceptedAnswer: { "@type": "Answer", text: a },
+  })),
+}).replace(/</g, "\\u003c");
+
+// 12 Nov 2026: SEO. The landing page's section links (top bar, phone menu).
+const SECTION_LINKS = [
+  { label: "Features", href: "#features" },
+  { label: "How it Works", href: "#how-it-works" },
+  { label: "Preview", href: "#preview" },
+  { label: "FAQ", href: "#faq" },
 ];
 
 const PREVIEW_TABS = [
@@ -175,9 +263,10 @@ function FeedPreviewMock() {
         </span>
       </div>
       <div>
-        <h4 className="text-sm font-extrabold text-foreground">
+        {/* 12 Nov 2026: SEO and valid HTML: a sample post title in a picture, not a page heading */}
+        <p className="text-sm font-extrabold text-foreground">
           BanglaFormer: Low-Resource NLP for South Asian Languages
-        </h4>
+        </p>
         <p className="text-xs text-muted-foreground leading-relaxed mt-1.5">
           Sharing our latest draft on extending transformer architectures to
           low-resource Bangla corpora — looking for collaborators with NLP or
@@ -327,11 +416,8 @@ export default function HomePage() {
           </Link>
 
           <div className="hidden md:flex items-center gap-1 mx-auto">
-            {[
-              { label: "Features", href: "#features" },
-              { label: "How it Works", href: "#how-it-works" },
-              { label: "Preview", href: "#preview" },
-            ].map((item) => (
+            {/* 12 Nov 2026: SEO (FAQ link added; one list for both menus) */}
+            {SECTION_LINKS.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
@@ -370,11 +456,8 @@ export default function HomePage() {
 
         {mobileOpen && (
           <div className="md:hidden bg-white border-t border-border px-4 py-4 space-y-1 shadow-lg">
-            {[
-              { label: "Features", href: "#features" },
-              { label: "How it Works", href: "#how-it-works" },
-              { label: "Preview", href: "#preview" },
-            ].map((item) => (
+            {/* 12 Nov 2026: SEO (FAQ link added; one list for both menus) */}
+            {SECTION_LINKS.map((item) => (
               <a
                 key={item.href}
                 href={item.href}
@@ -469,7 +552,8 @@ export default function HomePage() {
             <Reveal direction="left" delay={320}>
               <div className="flex items-center gap-6 mt-10 flex-wrap">
                 {[
-                  "No setup cost", "Built for academic use", "Secure & private by default",
+                  // 12 Nov 2026: says what the site really does (was "Secure & private by default")
+                  "No setup cost", "Built for academic use", "You decide who reads your papers",
                 ].map((t) => (
                   <span key={t} className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> {t}
@@ -595,6 +679,38 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ───────── Who it's for ───────── */}
+      {/* 12 Nov 2026: SEO (new section: who the platform is for) */}
+      <section id="who-its-for" className="pb-24 px-4 lg:px-6">
+        <div className="max-w-[1280px] mx-auto">
+          <Reveal className="text-center max-w-2xl mx-auto mb-14">
+            <span className="text-xs font-bold text-primary uppercase tracking-widest">Who it&apos;s for</span>
+            <h2 className="text-3xl lg:text-4xl font-extrabold text-foreground mt-3 tracking-tight">
+              Built for students, faculty, researchers, and alumni
+            </h2>
+            <p className="text-muted-foreground mt-3 leading-relaxed">
+              Whether you need a thesis partner, a co-author, or a research
+              mentor, AcademicOrbit helps you find the right people for your
+              research, at your university and beyond.
+            </p>
+          </Reveal>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {AUDIENCES.map((a, i) => (
+              <Reveal key={a.title} delay={i * 60}>
+                <div className="bg-card rounded-2xl border border-border shadow-sm p-5 h-full">
+                  <div className="w-11 h-11 rounded-2xl bg-neutral-100 flex items-center justify-center mb-4">
+                    <a.icon className="w-5 h-5 text-black" aria-hidden="true" />
+                  </div>
+                  <h3 className="text-sm font-bold text-foreground mb-1.5">{a.title}</h3>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{a.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ───────── How it works ───────── */}
       <section id="how-it-works" className="py-24 px-4 lg:px-6 bg-white/60 border-y border-border">
         <div className="max-w-[1100px] mx-auto">
@@ -684,6 +800,44 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ───────── FAQ ───────── */}
+      {/* 12 Nov 2026: SEO (new section: questions people search for, with
+          the same text as FAQPage structured data) */}
+      <section id="faq" className="py-24 px-4 lg:px-6 bg-white/60 border-y border-border mb-24">
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: FAQ_STRUCTURED_DATA }}
+        />
+        <div className="max-w-[860px] mx-auto">
+          <Reveal className="text-center max-w-2xl mx-auto mb-12">
+            <span className="text-xs font-bold text-primary uppercase tracking-widest">FAQ</span>
+            <h2 className="text-3xl lg:text-4xl font-extrabold text-foreground mt-3 tracking-tight">
+              Frequently asked questions
+            </h2>
+          </Reveal>
+
+          <Reveal delay={80}>
+            <div className="space-y-3">
+              {FAQS.map((f) => (
+                <details
+                  key={f.q}
+                  className="group bg-card rounded-2xl border border-border shadow-sm"
+                >
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 [&::-webkit-details-marker]:hidden">
+                    <h3 className="text-sm font-bold text-foreground">{f.q}</h3>
+                    <ChevronDown
+                      className="w-4 h-4 flex-shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                      aria-hidden="true"
+                    />
+                  </summary>
+                  <p className="px-5 pb-5 text-sm text-muted-foreground leading-relaxed">{f.a}</p>
+                </details>
+              ))}
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ───────── CTA banner ───────── */}
       <section className="px-4 lg:px-6 pb-24">
         <Reveal>
@@ -734,6 +888,8 @@ export default function HomePage() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-semibold text-muted-foreground">
             <a href="#features" className="hover:text-foreground transition-colors">Features</a>
+            {/* 12 Nov 2026: SEO (FAQ link) */}
+            <a href="#faq" className="hover:text-foreground transition-colors">FAQ</a>
             <Link href="/auth/login" className="hover:text-foreground transition-colors">Log in</Link>
             <Link href="/auth/signup" className="hover:text-foreground transition-colors">Sign up</Link>
             <Link href="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
