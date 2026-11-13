@@ -5,6 +5,8 @@ import { getCurrentUserSafe, isAuthLockError } from "@/lib/authSafe";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import OnboardingUI from "./UI";
+// 13 Nov 2026: a clear message when the profile cannot be read
+import LoadError from "@/components/LoadError";
 import { logDev } from "@/lib/log";
 import { friendlyError, notify } from "@/lib/feedback";
 import { sameSitePath } from "@/lib/safePath";
@@ -72,6 +74,8 @@ export default function OnboardingClient() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // 13 Nov 2026: the saved profile could not be read (no connection)
+  const [loadError, setLoadError] = useState(false);
 
   const [userId, setUserId] = useState("");
   const [email, setEmail] = useState("");
@@ -162,6 +166,10 @@ useEffect(() => {
 
       if (error) {
         logDev("LOAD ONBOARDING PROFILE ERROR:", error);
+        // 13 Nov 2026: no empty form when the saved profile could not be
+        // read: saving it would overwrite that profile.
+        if (!cancelled) setLoadError(true);
+        return;
       }
 
       if (cancelled) return;
@@ -195,6 +203,8 @@ useEffect(() => {
       }
 
       logDev("ONBOARDING LOAD ERROR:", error);
+      // 13 Nov 2026: the sign-in check could not reach the server
+      if (!cancelled) setLoadError(true);
     } finally {
       if (!cancelled) {
         setLoading(false);
@@ -301,6 +311,9 @@ useEffect(() => {
 
     router.push(nextPath);
   };
+
+  // 13 Nov 2026: say the profile could not be loaded instead of an empty form
+  if (loadError) return <LoadError />;
 
   return (
     <OnboardingUI

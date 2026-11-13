@@ -11,11 +11,15 @@ import NetworkUI, {
 } from "./UI";
 import { logDev } from "@/lib/log";
 import { friendlyError, notify } from "@/lib/feedback";
+// 13 Nov 2026: a clear message when the network cannot be loaded
+import LoadError from "@/components/LoadError";
 
 export default function NetworkClient() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  // 13 Nov 2026: the connections could not be read (no connection)
+  const [loadError, setLoadError] = useState(false);
   const [startingConversationId, setStartingConversationId] = useState<
     string | null
   >(null);
@@ -37,6 +41,8 @@ try {
   }
 
   logDev("NETWORK AUTH ERROR:", error);
+  // 13 Nov 2026: the sign-in check could not reach the server
+  setLoadError(true);
   setLoading(false);
   return;
 }
@@ -58,6 +64,8 @@ const userId = authUser.id;
     if (connectionError) {
       logDev("FETCH NETWORK CONNECTIONS ERROR:", connectionError);
       setConnections([]);
+      // 13 Nov 2026: not "no connections yet"
+      setLoadError(true);
       setLoading(false);
       return;
     }
@@ -176,6 +184,9 @@ const userId = authUser.id;
 
     router.push(`/messages?conversation=${conversationId}`);
   };
+
+  // 13 Nov 2026: say the network could not be loaded instead of an empty list
+  if (loadError) return <LoadError activePage="network" />;
 
   return (
     <NetworkUI

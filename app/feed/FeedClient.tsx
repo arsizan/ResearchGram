@@ -17,6 +17,8 @@ import {
 } from "@/lib/posts/loadPosts";
 import { usePostActions } from "@/lib/posts/usePostActions";
 import FeedUI, { type PlatformAuthor, type Post } from "./UI";
+// 13 Nov 2026: a clear message when the feed cannot be loaded
+import LoadError from "@/components/LoadError";
 import { friendlyError, isUnclearFailure, notify } from "@/lib/feedback";
 import { newId } from "@/lib/ids";
 
@@ -113,6 +115,8 @@ export default function FeedClient() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  // 13 Nov 2026: the profile or the posts could not be read (no connection)
+  const [loadError, setLoadError] = useState(false);
   const [uploading, setUploading] = useState(false);
 
   const [userId, setUserId] = useState("");
@@ -196,7 +200,9 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     searchAuthors();
   }, [coAuthorSearch, selectedPlatformAuthors, userId]);
 
-  const fetchPosts = async (activeUserId?: string) => {
+  // 13 Nov 2026: true when the posts are on screen (or a newer refresh is
+  // showing them), false when they could not be read.
+  const fetchPosts = async (activeUserId?: string): Promise<boolean> => {
     const requestId = ++feedRequestCounterRef.current;
     const isOutdated = () => requestId <= shownFeedRequestRef.current;
     const showPosts = (nextPosts: Post[], moreAvailable: boolean) => {
@@ -218,11 +224,12 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
 
     if (contentError) {
       logDev("FETCH CONTENTS ERROR:", contentError);
-      return;
+      // 13 Nov 2026: reported, so the first load can say so
+      return false;
     }
 
     // A newer refresh is already on screen; skip the rest of the work.
-    if (isOutdated()) return;
+    if (isOutdated()) return true; // 13 Nov 2026: not a failure
 
     const rows = (contents || []) as PostRow[];
     const moreAvailable = rows.length > limit && limit < FEED_MAX_POSTS;
@@ -231,22 +238,27 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
 
     if (visibleRows.length === 0) {
       showPosts([], moreAvailable);
-      return;
+      return true; // 13 Nov 2026: loaded, there is simply nothing to show
     }
 
     const hydrated = await hydratePosts(visibleRows, activeUserId);
 
     // Files or texts could not be loaded: keep what is on screen.
-    if (!hydrated) return;
+    // 13 Nov 2026: and report it
+    if (!hydrated) return false;
 
     showPosts(hydrated, moreAvailable);
+    return true;
   };
 
   const postActions = usePostActions({
     userId,
     fullName,
     posts,
-    refresh: () => fetchPosts(userId),
+    // 13 Nov 2026: fetchPosts now also says whether it worked; not needed here
+    refresh: async () => {
+      await fetchPosts(userId);
+    },
   });
 
   const handleLoadMorePosts = async () => {
@@ -293,6 +305,11 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
 
     if (profileError) {
       logDev("FEED PROFILE CHECK ERROR:", profileError);
+      // 13 Nov 2026: a failed read is not a missing profile. Before, it sent
+      // people to the profile setup form, where saving could overwrite the
+      // profile they already had.
+      setLoadError(true);
+      return;
     }
 
     const needsOnboarding =
@@ -313,7 +330,8 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     setFullName(profileData.full_name || "");
     setProfilePicUrl(profileData.profile_pic_url || "");
 
-    await fetchPosts(currentUserId);
+    // 13 Nov 2026: posts that could not be read are not an empty feed
+    if (!(await fetchPosts(currentUserId))) setLoadError(true);
   } catch (error) {
     if (isAuthLockError(error)) {
       logDev("FEED AUTH LOCK ERROR:", error);
@@ -321,6 +339,8 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     }
 
     logDev("FEED LOAD ERROR:", error);
+    // 13 Nov 2026: the sign-in check itself could not reach the server
+    setLoadError(true);
   } finally {
     setLoading(false);
   }
@@ -660,6 +680,9 @@ const [profilePicUrl, setProfilePicUrl] = useState("");
     await fetchPosts(userId);
     setUploading(false);
   };
+
+  // 13 Nov 2026: say the feed could not be loaded instead of showing it empty
+  if (loadError) return <LoadError activePage="feed" />;
 
   return (
     <FeedUI

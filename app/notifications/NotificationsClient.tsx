@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { safeInternalPath } from "@/lib/notifications";
 import NotificationsUI, { type NotificationRow } from "./UI";
+// 13 Nov 2026: a clear message when the notifications cannot be loaded
+import LoadError from "@/components/LoadError";
 import { logDev } from "@/lib/log";
-import { notify } from "@/lib/feedback";
+// 13 Nov 2026: the toast import (notify) went; the page shows LoadError instead
 
 // The page shows the newest 15 and grows by 15 with "Load more" (audit RG-17).
 const NOTIFICATION_PAGE_SIZE = 15;
@@ -16,6 +18,8 @@ export default function NotificationsClient() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
+  // 13 Nov 2026: the first load failed (no connection)
+  const [loadError, setLoadError] = useState(false);
   const [userId, setUserId] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
@@ -61,6 +65,8 @@ export default function NotificationsClient() {
     if (listResult.error) {
       // Keep what is on screen.
       logDev("LOAD NOTIFICATIONS PAGE ERROR:", listResult.error);
+      // 13 Nov 2026: with nothing on screen yet, this is not "no notifications"
+      if (shownRequestRef.current === 0) setLoadError(true);
       setLoading(false);
       return;
     }
@@ -117,9 +123,8 @@ export default function NotificationsClient() {
           isAuthLockError(error) ? "NOTIFICATIONS AUTH LOCK ERROR:" : "NOTIFICATIONS LOAD ERROR:",
           error,
         );
-        if (!cancelled) {
-          notify("Could not load your notifications. Reload the page to try again.", "error");
-        }
+        // 13 Nov 2026: the page itself says so now (was a toast over an empty list)
+        if (!cancelled) setLoadError(true);
       } finally {
         // The loading screen never stays up after a failed check (audit RG-37).
         if (!cancelled) setLoading(false);
@@ -204,6 +209,9 @@ export default function NotificationsClient() {
 
     router.push(safeInternalPath(notification.link_url, "/feed"));
   };
+
+  // 13 Nov 2026: say the notifications could not be loaded instead of an empty list
+  if (loadError) return <LoadError activePage="notifications" />;
 
   return (
     <NotificationsUI
